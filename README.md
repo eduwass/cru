@@ -52,6 +52,13 @@ cru init
 
 That's it — cru creates the tmux panes, applies the grid layout, and your workers are ready to go.
 
+## Use cases
+
+- **[Parallel feature work](https://code.claude.com/docs/en/agent-teams#when-to-use-agent-teams)** — split subtasks across workers, merge when done
+- **[Review crew](https://code.claude.com/docs/en/agent-teams#run-a-parallel-code-review)** — workers build, one reviews
+- **[Competing hypotheses](https://code.claude.com/docs/en/agent-teams#investigate-with-competing-hypotheses)** — debug faster with multiple theories at once
+- **[Research spike](https://code.claude.com/docs/en/agent-teams#start-with-research-and-review)** — explore different approaches simultaneously
+
 ## Skill
 
 The `/cru` skill is installed to `.claude/skills/` via `cru init`. It's the main way to use cru — type it in Claude Code and it handles team creation, spawning, and layout in one shot.
