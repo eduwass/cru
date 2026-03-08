@@ -16,6 +16,7 @@ import { config } from '@/commands/layout/config'
 import { init } from '@/commands/init'
 import { doctor } from '@/commands/doctor'
 import { logs } from '@/commands/logs'
+import { tasks } from '@/commands/tasks'
 import { clean } from '@/commands/clean'
 
 // Commands that require specific preflight checks
@@ -52,5 +53,6 @@ Cli.create('cru', {
   .command('init', init)
   .command('doctor', doctor)
   .command('logs', logs)
+  .command('tasks', tasks)
   .command('clean', clean)
   .serve()
