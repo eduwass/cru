@@ -1,0 +1,13 @@
+{
+  "layout": {
+    "lead": {
+      "position": "left",
+      "size": 40
+    },
+    "grid": {
+      "fill": "row",
+      "maxCols": null,
+      "maxRows": null
+    }
+  }
+}
