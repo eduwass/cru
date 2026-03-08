@@ -10,39 +10,31 @@ export const init = {
   }),
   run(c) {
     const cwd = process.cwd()
-    const results = []
+    const files: Record<string, string> = {}
 
     // 1. Config file
     const configPath = join(cwd, CONFIG_NAME)
     if (!existsSync(configPath) || c.options.force) {
       writeConfig(configPath, DEFAULTS)
-      results.push({ file: CONFIG_NAME, status: 'created' })
+      files[CONFIG_NAME] = 'created'
     } else {
-      results.push({ file: CONFIG_NAME, status: 'exists (use --force to overwrite)' })
+      files[CONFIG_NAME] = 'exists'
     }
 
     // 2. Install skill to .claude/skills/
-    // src/commands/ → src/ → package root
     const pkgRoot = dirname(dirname(import.meta.dirname))
     const skillSrc = join(pkgRoot, 'skills', 'cru')
     const skillDest = join(cwd, '.claude', 'skills', 'cru')
 
-    if (!existsSync(skillDest) || c.options.force) {
+    const skillExists = existsSync(join(skillDest, 'SKILL.md'))
+    if (!skillExists || c.options.force) {
       mkdirSync(join(cwd, '.claude', 'skills'), { recursive: true })
       cpSync(skillSrc, skillDest, { recursive: true })
-      results.push({ file: '.claude/skills/cru/', status: 'installed' })
+      files['.claude/skills/cru/'] = 'installed'
     } else {
-      results.push({ file: '.claude/skills/cru/', status: 'exists (use --force to overwrite)' })
+      files['.claude/skills/cru/'] = 'exists'
     }
 
-    return {
-      done: true,
-      files: results,
-      next_steps: [
-        'cru spawn <team> -n 4  — spawn workers',
-        'cru grid <team>        — re-apply layout',
-        '/cru <task>             — via Claude Code skill',
-      ],
-    }
+    return { files, tip: 'Use /cru in Claude Code to spawn a team.' }
   },
 }

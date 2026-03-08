@@ -48,71 +48,40 @@ export const doctor = {
       fix?: string
     }> = []
 
-    // 1. tmux installed
     const tmuxPath = hasBinary('tmux')
     if (!tmuxPath) {
       checks.push({
         name: 'tmux',
         status: 'fail',
         detail: 'not installed',
-        fix: process.platform === 'darwin'
-          ? 'brew install tmux'
-          : 'sudo apt install tmux',
+        fix: process.platform === 'darwin' ? 'brew install tmux' : 'sudo apt install tmux',
       })
     } else {
       checks.push({ name: 'tmux', status: 'ok', detail: getVersion('tmux -V') || 'installed' })
     }
 
-    // 2. Inside a tmux session
     if (tmuxPath && !inTmux()) {
-      checks.push({
-        name: 'tmux-session',
-        status: 'fail',
-        detail: 'not inside a tmux session',
-        fix: tmuxCmd,
-      })
+      checks.push({ name: 'tmux-session', status: 'fail', detail: 'not inside a tmux session', fix: tmuxCmd })
     } else if (tmuxPath) {
       checks.push({ name: 'tmux-session', status: 'ok', detail: 'active' })
     }
 
-    // 3. claude CLI
     const claudePath = hasBinary('claude')
     if (!claudePath) {
-      checks.push({
-        name: 'claude',
-        status: 'fail',
-        detail: 'not installed',
-        fix: 'npm install -g @anthropic-ai/claude-code',
-      })
+      checks.push({ name: 'claude', status: 'fail', detail: 'not installed', fix: 'npm install -g @anthropic-ai/claude-code' })
     } else {
       checks.push({ name: 'claude', status: 'ok', detail: getVersion('claude --version') || 'installed' })
     }
 
-    // 4. bun
     const bunPath = hasBinary('bun')
     if (!bunPath) {
-      checks.push({
-        name: 'bun',
-        status: 'fail',
-        detail: 'not installed',
-        fix: 'curl -fsSL https://bun.sh/install | bash',
-      })
+      checks.push({ name: 'bun', status: 'fail', detail: 'not installed', fix: 'curl -fsSL https://bun.sh/install | bash' })
     } else {
       checks.push({ name: 'bun', status: 'ok', detail: `v${getVersion('bun --version')}` })
     }
 
     const ok = checks.every((ch) => ch.status === 'ok')
 
-    if (c.options.json) {
-      return { ok, terminal, tmuxCmd, checks }
-    }
-
-    return {
-      status: ok ? 'READY' : 'NOT READY',
-      checks: checks.map((ch) => ({
-        [`${ch.status === 'ok' ? '✓' : '✗'} ${ch.name}`]: ch.detail,
-        ...(ch.fix ? { fix: ch.fix } : {}),
-      })),
-    }
+    return { ok, terminal, tmuxCmd, checks }
   },
 }

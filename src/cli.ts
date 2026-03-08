@@ -1,5 +1,6 @@
 #!/usr/bin/env bun
 import { Cli } from 'incur'
+import { preflight } from '@/lib/preflight'
 
 // Orchestration
 import { spawn } from '@/commands/orchestration/spawn'
@@ -15,10 +16,28 @@ import { config } from '@/commands/layout/config'
 import { init } from '@/commands/init'
 import { doctor } from '@/commands/doctor'
 
+// Commands that require specific preflight checks
+const PREFLIGHT: Record<string, string[]> = {
+  spawn: ['tmux-session', 'claude'],
+  kill: ['tmux'],
+  grid: ['tmux-session'],
+}
+
 Cli.create('cru', {
   description: '◫ Manage tmux layouts for Claude Code agent teams',
   version: '1.0.0',
 })
+  .use(async (c, next) => {
+    const checks = PREFLIGHT[c.command]
+    if (checks) {
+      const result = preflight(...checks)
+      if (!result.ok) {
+        const e = result.errors[0]
+        return c.error({ code: e.check.toUpperCase(), message: e.message })
+      }
+    }
+    await next()
+  })
   // Orchestration
   .command('spawn', spawn)
   .command('kill', kill)

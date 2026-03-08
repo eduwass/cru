@@ -1,5 +1,4 @@
 import { z } from 'incur'
-import { guard } from '@/lib/preflight'
 import { readTeamConfig } from '@/lib/teams'
 import { loadConfig } from '@/lib/config'
 import { currentPane, paneWindow, getWindowDimensions, listWindowPanes, applyLayout } from '@/lib/tmux'
@@ -19,25 +18,22 @@ export const spawn = {
   }),
   alias: { workers: 'n' },
   run(c) {
-    const err = guard('tmux-session', 'claude')
-    if (err) return err
-
     const teamName = c.args.team
     const numWorkers = c.options.workers
     const cwd = c.options.cwd || process.cwd()
 
-    // Read team config for parent session ID
     const teamConf = readTeamConfig(teamName)
     const parentSessionId = c.options['parent-session'] || teamConf.leadSessionId
     if (!parentSessionId) {
-      return { error: 'Could not determine parent session ID. Pass --parent-session or ensure team config has leadSessionId.' }
+      return c.error({
+        code: 'NO_PARENT_SESSION',
+        message: 'Could not determine parent session ID. Pass --parent-session or ensure team config has leadSessionId.',
+      })
     }
 
-    // Detect current pane as lead
     const leadPane = currentPane()
     const windowId = paneWindow(leadPane)
 
-    // Spawn workers
     const panes = spawnWorkers(leadPane, {
       teamName,
       parentSessionId,
@@ -63,7 +59,6 @@ export const spawn = {
       applyLayout(windowId, layoutStr)
     }
 
-    // Build grid display
     const { cols, rows } = computeGrid(numWorkers, conf.layout)
     const grid = []
     let idx = 0

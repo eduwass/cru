@@ -1,5 +1,4 @@
 import { z } from 'incur'
-import { guard } from '@/lib/preflight'
 import { readTeamConfig } from '@/lib/teams'
 import { killPane } from '@/lib/tmux'
 
@@ -9,9 +8,6 @@ export const kill = {
     team: z.string().describe('Team name'),
   }),
   run(c) {
-    const err = guard('tmux')
-    if (err) return err
-
     const teamName = c.args.team
     const config = readTeamConfig(teamName)
 
@@ -23,10 +19,6 @@ export const kill = {
       killed.push({ name: member.name, pane: member.tmuxPaneId })
     }
 
-    return {
-      team: teamName,
-      killed: killed.length,
-      panes: killed,
-    }
+    return { team: teamName, killed: killed.length, panes: killed }
   },
 }

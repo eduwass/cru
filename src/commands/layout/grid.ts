@@ -1,5 +1,4 @@
 import { z } from 'incur'
-import { guard } from '@/lib/preflight'
 import { loadConfig } from '@/lib/config'
 import { readTeamConfig, findTeamWindow } from '@/lib/teams'
 import { getWindowDimensions, listWindowPanes, applyLayout } from '@/lib/tmux'
@@ -18,12 +17,8 @@ export const grid = {
     'max-rows': z.coerce.number().optional().describe('Override max rows'),
   }),
   run(c) {
-    const err = guard('tmux-session')
-    if (err) return err
-
     const conf = loadConfig()
 
-    // CLI flags take precedence over config file
     if (c.options['lead-size'] != null) conf.layout.lead.size = c.options['lead-size']
     if (c.options['lead-position']) conf.layout.lead.position = c.options['lead-position']
     if (c.options.fill) conf.layout.grid.fill = c.options.fill
@@ -33,7 +28,7 @@ export const grid = {
     const teamName = c.args.team
     const teamConf = readTeamConfig(teamName)
     const windowId = findTeamWindow(teamName)
-    if (!windowId) return { error: 'Could not find tmux window for team' }
+    if (!windowId) return c.error({ code: 'NO_WINDOW', message: 'Could not find tmux window for team' })
 
     const { w: W, h: H } = getWindowDimensions(windowId)
     const panes = listWindowPanes(windowId)
@@ -44,8 +39,8 @@ export const grid = {
     const leadPane = panes.find((p) => !workerPaneIds.has(p.id))
     const workerPanes = panes.filter((p) => workerPaneIds.has(p.id))
 
-    if (!leadPane) return { error: 'Could not identify lead pane' }
-    if (workerPanes.length === 0) return { error: 'No worker panes found' }
+    if (!leadPane) return c.error({ code: 'NO_LEAD', message: 'Could not identify lead pane' })
+    if (workerPanes.length === 0) return c.error({ code: 'NO_WORKERS', message: 'No worker panes found' })
 
     const leadId = leadPane.id.replace('%', '')
     const workerIds = workerPanes.map((p) => p.id.replace('%', ''))
@@ -53,7 +48,6 @@ export const grid = {
     const layoutStr = buildLayout(W, H, leadId, workerIds, conf.layout)
     applyLayout(windowId, layoutStr)
 
-    // build grid for output
     const N = workerPanes.length
     const { cols, rows } = computeGrid(N, conf.layout)
     const grid = []
@@ -62,9 +56,7 @@ export const grid = {
       const row = []
       for (let col = 0; col < cols; col++) {
         if (idx < N) {
-          const member = teamConf.members.find(
-            (m) => m.tmuxPaneId === workerPanes[idx].id,
-          )
+          const member = teamConf.members.find((m) => m.tmuxPaneId === workerPanes[idx].id)
           row.push(member?.name || `worker-${idx + 1}`)
           idx++
         }

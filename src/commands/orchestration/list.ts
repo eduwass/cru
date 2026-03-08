@@ -8,11 +8,7 @@ export const list = {
     return {
       teams: teams.map((t) => {
         const config = readTeamConfig(t)
-        return {
-          name: config.name,
-          members: config.members.length,
-          description: config.description,
-        }
+        return { name: config.name, members: config.members.length, description: config.description }
       }),
     }
   },
