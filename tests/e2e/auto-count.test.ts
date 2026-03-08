@@ -8,6 +8,7 @@
  */
 import { describe, test, expect, beforeAll, afterAll, afterEach } from 'bun:test'
 import { createTestEnv, type TestEnv } from './setup'
+import { saveDebugSnapshot } from './helpers'
 
 const TIMEOUT = 120_000
 
@@ -15,10 +16,11 @@ describe('/cru with auto count', () => {
   let env: TestEnv
 
   beforeAll(async () => {
-    env = await createTestEnv()
+    env = await createTestEnv('auto-count')
   }, 90_000)
 
   afterEach(async () => {
+    await saveDebugSnapshot(env.tmuxWindow, 'after-test', env.runDir)
     await env?.resetForNextTest()
   })
 

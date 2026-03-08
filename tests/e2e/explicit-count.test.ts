@@ -13,13 +13,12 @@ describe('/cru with explicit count', () => {
   let env: TestEnv
 
   beforeAll(async () => {
-    env = await createTestEnv()
+    env = await createTestEnv('explicit-count')
   }, 90_000)
 
   afterAll(async () => {
-    // Take a final snapshot before teardown
     if (env) {
-      await saveDebugSnapshot(env.tmuxWindow, 'final')
+      await saveDebugSnapshot(env.tmuxWindow, 'final', env.runDir)
       await env.teardown()
     }
   })
@@ -27,22 +26,17 @@ describe('/cru with explicit count', () => {
   test(
     '/cru 3 say hi → 4 panes (1 lead + 3 workers)',
     async () => {
-      // Send the skill command
       await env.send('/cru 3 say hi to the lead')
 
-      // Snapshot right after sending
       await Bun.sleep(5_000)
-      await saveDebugSnapshot(env.tmuxWindow, 'after-send')
+      await saveDebugSnapshot(env.tmuxWindow, 'after-send', env.runDir)
 
-      // Wait for panes to appear (lead + 3 workers = 4)
       const panes = await env.waitForPaneCount(4, 60_000)
 
-      // Snapshot once panes are visible
-      await saveDebugSnapshot(env.tmuxWindow, 'panes-visible')
+      await saveDebugSnapshot(env.tmuxWindow, 'panes-visible', env.runDir)
 
       expect(panes.length).toBe(4)
 
-      // Log layout info
       for (const p of panes) {
         console.log(`  pane ${p.index}: ${p.width}x${p.height} (${p.id})`)
       }

@@ -16,7 +16,7 @@ describe('smoke: test environment', () => {
   let env: TestEnv
 
   beforeAll(async () => {
-    env = await createTestEnv()
+    env = await createTestEnv('smoke')
   }, 90_000)
 
   afterAll(async () => {

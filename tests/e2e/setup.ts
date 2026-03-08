@@ -1,19 +1,18 @@
 /**
  * E2E test environment setup.
  *
- * Creates an isolated tmux session (separate iTerm2 window in -CC mode)
- * with Claude Code for testing. Tests run there without interfering with
- * your work.
+ * Creates a new iTerm2 window, starts tmux -CC in it, then launches Claude
+ * Code. Tests run in that isolated window without interfering with your work.
  *
  * Lifecycle:
  *   1. checkPrereqs()     — verify it2, tmux, claude are available
- *   2. createTestEnv()    — new tmux session, start claude, wait for ready
+ *   2. createTestEnv()    — new window → tmux -CC → claude, wait for ready
  *   3. ... run tests ...
  *   4. env.resetForNextTest() — kill worker panes, wait for Claude prompt
- *   5. env.teardown()     — kill the test session (closes the window)
+ *   5. env.teardown()     — kill the tmux session (closes the window)
  */
 import { $ } from 'bun'
-import { poll } from './helpers'
+import { poll, createRunDir } from './helpers'
 
 // ---------------------------------------------------------------------------
 // Types
@@ -26,6 +25,10 @@ export interface TestEnv {
   tmuxWindow: string
   /** tmux session name (for teardown). */
   tmuxSession: string
+  /** Lead tmux pane ID. */
+  leadPaneId: string
+  /** Run directory for artifacts (screenshots, pane captures, logs). */
+  runDir: string
   /** Send a command to the lead Claude session. */
   send: (text: string) => Promise<void>
   /** Capture the visible screen of a session. */
@@ -76,12 +79,6 @@ export async function checkPrereqs(): Promise<void> {
   if (auth.exitCode !== 0) {
     throw new Error('iTerm2 API not reachable. Enable it in Preferences > General > Magic > Enable Python API')
   }
-
-  // Check tmux is running
-  const tmux = await $`tmux display-message -p '#{session_name}'`.nothrow().quiet()
-  if (tmux.exitCode !== 0) {
-    throw new Error('Not inside a tmux session. E2E tests require tmux.')
-  }
 }
 
 // ---------------------------------------------------------------------------
@@ -91,50 +88,92 @@ export async function checkPrereqs(): Promise<void> {
 /** Singleton — only one test env per process. */
 let _env: TestEnv | null = null
 
-export async function createTestEnv(): Promise<TestEnv> {
+export async function createTestEnv(testName = 'test'): Promise<TestEnv> {
   if (_env) return _env
 
   await checkPrereqs()
 
   const cwd = process.cwd()
-
-  // Create a new tmux SESSION (not window).
-  // In -CC mode, a new session = a new iTerm2 window.
-  // A new window would just be a tab in the same iTerm2 window.
   const tmuxSession = `cru-e2e-${Date.now()}`
-  const sessionInfo = (
-    await $`tmux new-session -d -s ${tmuxSession} -x 200 -y 50 -P -F '#{window_id} #{pane_id} #{pane_pid}'`.text()
-  ).trim()
-  const [tmuxWindow, leadPaneId, shellPid] = sessionInfo.split(' ')
+  const runDir = createRunDir(testName)
 
-  // Set a unique pane title so we can find the iTerm2 session by title if PID matching fails
-  await $`tmux select-pane -t ${leadPaneId} -T ${tmuxSession}`.nothrow()
+  // Snapshot existing iTerm2 sessions so we can detect the new one
+  const beforeSessions = new Set(
+    ((await $`it2 session list --format json`.nothrow().json()) as any[]).map((s) => s.SessionID),
+  )
+
+  // 1. Create a new iTerm2 window
+  const winOutput = (await $`it2 window create`.text()).trim()
+  const winSessionMatch = winOutput.match(/Session ID:\s*(.+)/)
+  if (!winSessionMatch) {
+    throw new Error(`Could not parse Session ID from it2 window create:\n${winOutput}`)
+  }
+  const nativeSessionId = winSessionMatch[1].trim()
+
+  console.log(`  [setup] native window session=${nativeSessionId}`)
+
+  // 2. Resize the native window to be large enough for a proper layout
+  await Bun.sleep(500)
+  await $`it2 window set-frame ${nativeSessionId} 0 0 1600 1000`.nothrow().quiet()
+  await Bun.sleep(200)
+
+  // 3. Start tmux -CC in the new window — this creates a tmux-integrated session
+  await $`it2 session send-text ${nativeSessionId} --skip-confirm ${'tmux -CC new-session -s ' + tmuxSession}`
+
+  // 4. Wait for the tmux session to appear and find its pane info
+  await poll(
+    async () => {
+      const out = await $`tmux has-session -t ${tmuxSession}`.nothrow().quiet()
+      return out.exitCode === 0 ? true : null
+    },
+    { timeout: 10_000, interval: 500, label: 'tmux session created' },
+  )
+
+  // Get the tmux window/pane info
+  const paneInfo = (
+    await $`tmux list-panes -t ${tmuxSession} -F '#{window_id} #{pane_id} #{pane_pid}'`.text()
+  ).trim()
+  const [tmuxWindow, leadPaneId, shellPid] = paneInfo.split(' ')
 
   console.log(`  [setup] tmux session=${tmuxSession} window=${tmuxWindow} pane=${leadPaneId} pid=${shellPid}`)
 
-  // Navigate to project dir, install skill, then start Claude
+  // 4. Find the iTerm2 session for the tmux pane (new session created by -CC mode)
+  const sessionId = await poll(
+    async () => {
+      const sessions: any[] = await $`it2 session list --format json`.nothrow().json()
+      // Match by PID
+      const pidMatch = sessions.find((s) => String(s.ShellPID) === shellPid)
+      if (pidMatch) return pidMatch.SessionID as string
+      // Fallback: find a session that didn't exist before
+      const newSession = sessions.find((s) => !beforeSessions.has(s.SessionID) && s.SessionID !== nativeSessionId)
+      if (newSession) return newSession.SessionID as string
+      return null
+    },
+    { timeout: 15_000, interval: 500, label: 'iTerm2 session for tmux pane' },
+  )
+
+  console.log(`  [setup] iterm session=${sessionId}`)
+
+  // 5. Set up the test environment — install skill, start Claude
   await $`tmux send-keys -t ${leadPaneId} ${'cd ' + cwd} Enter`.nothrow()
   await Bun.sleep(300)
   await $`tmux send-keys -t ${leadPaneId} 'bun src/cli.ts init --force' Enter`.nothrow()
   await Bun.sleep(1500)
   await $`tmux send-keys -t ${leadPaneId} 'claude --dangerously-skip-permissions' Enter`.nothrow()
 
-  // Find the iTerm2 session for this tmux pane
-  await Bun.sleep(2000)
-  const sessionId = await findItermSession(shellPid, tmuxSession)
-
-  // Wait for Claude to be ready (prompt visible, no queued messages)
+  // 6. Wait for Claude to be ready
   await waitForClaudeReady(sessionId)
 
-  console.log(`  [setup] ready — iterm session=${sessionId}`)
+  console.log(`  [setup] Claude ready`)
 
   const env: TestEnv = {
     sessionId,
     tmuxWindow,
     tmuxSession,
+    leadPaneId,
+    runDir,
 
     async send(text: string) {
-      // Wait for Claude to be at an idle prompt before sending
       await waitForClaudeReady(sessionId, 60_000)
       await $`it2 session send-text ${sessionId} --skip-confirm ${text}`
     },
@@ -181,7 +220,6 @@ export async function createTestEnv(): Promise<TestEnv> {
 
     async resetForNextTest() {
       const panes = await env.listPanes()
-      // Kill all panes except the lead (reverse order to avoid index shifts)
       for (const pane of panes.reverse()) {
         if (pane.id !== leadPaneId) {
           await $`tmux kill-pane -t ${pane.id}`.nothrow().quiet()
@@ -191,7 +229,6 @@ export async function createTestEnv(): Promise<TestEnv> {
     },
 
     async teardown() {
-      // Kill the entire tmux session (closes the iTerm2 window in -CC mode)
       await $`tmux kill-session -t ${tmuxSession}`.nothrow().quiet()
       _env = null
     },
@@ -207,7 +244,6 @@ export async function createTestEnv(): Promise<TestEnv> {
 
 /**
  * Wait until a Claude Code session is ready (idle, at prompt, no queued messages).
- * Uses it2 session list PluginData instead of standalone extension scripts.
  */
 async function waitForClaudeReady(sessionId: string, timeout = 90_000) {
   await poll(
@@ -223,36 +259,5 @@ async function waitForClaudeReady(sessionId: string, timeout = 90_000) {
       return noQueued && noModal ? true : null
     },
     { timeout, interval: 2_000, label: 'Claude ready' },
-  )
-}
-
-/**
- * Find the iTerm2 session ID for our test tmux pane.
- * Tries PID matching first, then falls back to window title matching.
- */
-async function findItermSession(pid: string, tmuxSessionName: string): Promise<string> {
-  // Also set the iTerm2 window title so we can match on it as a fallback
-  // In -CC mode, we can find the window via `it2 window list` and match by title
-  // But first try the simpler PID approach
-  return poll(
-    async () => {
-      const sessions: any[] = await $`it2 session list --format json`.nothrow().json()
-
-      // Try 1: PID match (most reliable when available)
-      const pidMatch = sessions.find((s) => String(s.ShellPID) === pid)
-      if (pidMatch) return pidMatch.SessionID
-
-      // Try 2: Window title match — tmux session name shows as window/tab title in -CC mode
-      const titleMatch = sessions.find(
-        (s) =>
-          s.WindowTitle?.includes(tmuxSessionName) ||
-          s.TabTitle?.includes(tmuxSessionName) ||
-          s.SessionName?.includes(tmuxSessionName),
-      )
-      if (titleMatch) return titleMatch.SessionID
-
-      return null
-    },
-    { timeout: 15_000, interval: 500, label: `iTerm2 session for test env` },
   )
 }

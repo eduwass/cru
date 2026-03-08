@@ -191,15 +191,16 @@ export async function screenshot(path: string): Promise<void> {
 
 /**
  * Save a debug snapshot: screenshot + text capture of all panes in a tmux window.
- * Files are saved to tests/artifacts/ (gitignored).
+ * If `runDir` is provided, files go there with clean names (e.g. `after-send.png`).
+ * Otherwise falls back to tests/artifacts/ with timestamped names.
  */
 export async function saveDebugSnapshot(
   tmuxWindow: string,
   label: string,
+  runDir?: string,
 ): Promise<string> {
-  const dir = `${import.meta.dir}/../artifacts`
-  const ts = Date.now()
-  const prefix = `${dir}/${label}-${ts}`
+  const dir = runDir ?? `${import.meta.dir}/../artifacts`
+  const prefix = runDir ? `${dir}/${label}` : `${dir}/${label}-${Date.now()}`
 
   await $`mkdir -p ${dir}`.quiet()
 
@@ -221,8 +222,27 @@ export async function saveDebugSnapshot(
   const textPath = `${prefix}-panes.txt`
   await Bun.write(textPath, captures.join('\n\n'))
 
-  console.log(`  [debug] snapshot saved: ${prefix}.png + ${textPath}`)
+  console.log(`  [debug] ${prefix}.png`)
   return prefix
+}
+
+/**
+ * Create a run directory for a test file. Returns the absolute path.
+ * Format: tests/artifacts/<YYYYMMDD-HHMMSS>-<test-name>/
+ */
+export function createRunDir(testName: string): string {
+  const now = new Date()
+  const ts = [
+    now.getFullYear(),
+    String(now.getMonth() + 1).padStart(2, '0'),
+    String(now.getDate()).padStart(2, '0'),
+    '-',
+    String(now.getHours()).padStart(2, '0'),
+    String(now.getMinutes()).padStart(2, '0'),
+    String(now.getSeconds()).padStart(2, '0'),
+  ].join('')
+  const dir = `${import.meta.dir}/../artifacts/${ts}-${testName}`
+  return dir
 }
 
 /**
