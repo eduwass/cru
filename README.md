@@ -34,16 +34,19 @@ bun add -g cru-cli
 
 ## Quick start
 
+1. Set up cru in your project:
+
 ```bash
-# Spawn 4 workers for a team
-cru spawn my-team -n 4
-
-# Re-apply grid layout
-cru grid my-team
-
-# With overrides
-cru grid my-team --lead-size 30 --lead-position right
+cru init
 ```
+
+2. Ask Claude Code to spawn a team:
+
+```
+/spawn-team 4 build a REST API
+```
+
+That's it — cru creates the tmux panes, applies the grid layout, and your workers are ready to go.
 
 ## Commands
 
