@@ -1,5 +1,6 @@
 import { z } from 'incur'
 import { readTeamConfig, listTeams } from '@/lib/teams'
+import { loadPanes } from '@/lib/panes'
 import { readFileSync, readdirSync, existsSync } from 'node:fs'
 import { join, basename } from 'node:path'
 import { homedir } from 'node:os'
@@ -74,6 +75,7 @@ function readInboxes(teamName: string): Event[] {
           from: msg.from,
           to,
           text,
+          color: msg.color,
         })
       }
     } catch {}
@@ -84,9 +86,18 @@ function readInboxes(teamName: string): Event[] {
 function teamEvents(teamName: string): { events: Event[]; colorMap: Record<string, string> } {
   const config = readTeamConfig(teamName)
   const colorMap: Record<string, string> = {}
-  let autoIdx = 0
+
+  // 1. Seed from cru-panes.json (most reliable — has colors from spawn time)
+  const cruPanes = loadPanes(teamName)
+  if (cruPanes) {
+    for (const w of cruPanes.workers) {
+      if (w.color && COLORS[w.color]) colorMap[w.name] = w.color
+    }
+  }
+
+  // 2. Layer on Claude config members (may have colors for registered workers)
   for (const m of config.members) {
-    colorMap[m.name] = m.color && COLORS[m.color] ? m.color : AUTO_COLORS[autoIdx++ % AUTO_COLORS.length]
+    if (!colorMap[m.name] && m.color && COLORS[m.color]) colorMap[m.name] = m.color
   }
 
   const events: Event[] = []
@@ -99,9 +110,12 @@ function teamEvents(teamName: string): { events: Event[]; colorMap: Record<strin
   }
 
   const msgEvents = readInboxes(teamName)
+  // Build colorMap from inbox message colors (workers may not be in config yet)
   for (const e of msgEvents) {
     e.team = teamName
-    e.color = colorMap[e.from!] || colorMap[e.to!]
+    if (e.color && e.from && !colorMap[e.from]) {
+      colorMap[e.from] = e.color
+    }
   }
   events.push(...msgEvents)
 
@@ -130,6 +144,7 @@ function colorize(name: string, color: string | undefined, colorMap?: Record<str
     if (!colorMap[name]) colorMap[name] = hashColor(name)
     color = colorMap[name]
   }
+  if (name === 'team-lead') return `${BOLD}${name}${RESET}`
   const c = color && COLORS[color]
   return c ? `${c}${name}${RESET}` : name
 }

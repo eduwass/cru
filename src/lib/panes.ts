@@ -26,3 +26,17 @@ export function loadPanes(teamName: string): PaneRecord | null {
     return null
   }
 }
+
+/** Check if a team has live worker panes in tmux. */
+export function isTeamAlive(teamName: string): boolean {
+  const cruPanes = loadPanes(teamName)
+  if (!cruPanes) return false
+  try {
+    const { execSync } = require('node:child_process')
+    const allPanes: string = execSync('tmux list-panes -a -F "#{pane_id}"', { encoding: 'utf-8' }).trim()
+    const paneSet = new Set(allPanes.split('\n'))
+    return cruPanes.workers.some((w) => paneSet.has(w.paneId))
+  } catch {
+    return false
+  }
+}

@@ -19,18 +19,20 @@ export const kill = {
         killPane(w.paneId)
         killed.push({ name: w.name, pane: w.paneId })
       }
-      return { team: teamName, killed: killed.length, panes: killed }
+    } else {
+      // Fallback: use Claude's team config
+      try {
+        const config = readTeamConfig(teamName)
+        const workers = config.members.filter((m) => m.tmuxPaneId)
+        for (const member of workers) {
+          killPane(member.tmuxPaneId)
+          killed.push({ name: member.name, pane: member.tmuxPaneId })
+        }
+      } catch {}
     }
 
-    // Fallback: use Claude's team config
-    try {
-      const config = readTeamConfig(teamName)
-      const workers = config.members.filter((m) => m.tmuxPaneId)
-      for (const member of workers) {
-        killPane(member.tmuxPaneId)
-        killed.push({ name: member.name, pane: member.tmuxPaneId })
-      }
-    } catch {}
+    // Team data (config.json, inboxes/, cru-panes.json) is preserved
+    // for post-mortem review via `cru logs`. Use `cru clean` to remove.
 
     return { team: teamName, killed: killed.length, panes: killed }
   },

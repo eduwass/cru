@@ -149,6 +149,17 @@ cru doctor
 cru doctor --json
 ```
 
+### `clean`
+
+Remove old team data from `~/.claude/teams`.
+
+```bash
+cru clean                  # remove teams older than 7 days
+cru clean --days 3         # older than 3 days
+cru clean --all            # remove all teams
+cru clean --dry-run        # show what would be removed
+```
+
 ### `init`
 
 Set up cru in the current project.
@@ -247,6 +258,7 @@ src/
 ├── commands/
 │   ├── doctor.ts                 # Environment diagnostics
 │   ├── init.ts                   # Set up cru in a project
+│   ├── clean.ts                  # Remove old team data
 │   ├── logs.ts                   # Team activity log
 │   ├── orchestration/
 │   │   ├── spawn.ts              # Spawn worker agents
@@ -262,6 +274,7 @@ src/
     ├── layout.ts                 # Grid math & tmux layout strings
     ├── preflight.ts              # Prerequisite checks
     ├── spawn.ts                  # Worker spawning logic
+    ├── panes.ts                  # Pane tracking (cru-panes.json)
     ├── teams.ts                  # Read Claude Code team configs
     └── tmux.ts                   # Tmux command helpers
 
