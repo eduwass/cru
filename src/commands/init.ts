@@ -24,15 +24,15 @@ export const init = {
     // 2. Install skill to .claude/skills/
     // src/commands/ → src/ → package root
     const pkgRoot = dirname(dirname(import.meta.dirname))
-    const skillSrc = join(pkgRoot, 'skills', 'spawn-team')
-    const skillDest = join(cwd, '.claude', 'skills', 'spawn-team')
+    const skillSrc = join(pkgRoot, 'skills', 'cru')
+    const skillDest = join(cwd, '.claude', 'skills', 'cru')
 
     if (!existsSync(skillDest) || c.options.force) {
       mkdirSync(join(cwd, '.claude', 'skills'), { recursive: true })
       cpSync(skillSrc, skillDest, { recursive: true })
-      results.push({ file: '.claude/skills/spawn-team/', status: 'installed' })
+      results.push({ file: '.claude/skills/cru/', status: 'installed' })
     } else {
-      results.push({ file: '.claude/skills/spawn-team/', status: 'exists (use --force to overwrite)' })
+      results.push({ file: '.claude/skills/cru/', status: 'exists (use --force to overwrite)' })
     }
 
     return {
@@ -41,7 +41,7 @@ export const init = {
       next_steps: [
         'cru spawn <team> -n 4  — spawn workers',
         'cru grid <team>        — re-apply layout',
-        '/spawn-team 4 <task>           — via Claude Code skill',
+        '/cru 4 <task>           — via Claude Code skill',
       ],
     }
   },

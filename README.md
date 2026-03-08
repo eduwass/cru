@@ -4,6 +4,8 @@
 
 Layout for [Claude Code agent teams](https://code.claude.com/docs/en/agent-teams), fixed.
 
+Agent teams let multiple Claude Code instances work together in parallel — cru handles the tmux layout so you don't have to.
+
 ```
 ╭──────────────────┬────────────────┬────────────────╮
 │                  │                │                │
@@ -24,8 +26,6 @@ Layout for [Claude Code agent teams](https://code.claude.com/docs/en/agent-teams
 
 ## Install
 
-Install with your package manager of choice:
-
 ```bash
 npm install -g cru-cli
 ```
@@ -44,15 +44,26 @@ bun add -g cru-cli
 cru init
 ```
 
-2. Ask Claude Code to spawn a team:
+2. In Claude Code, spawn a team:
 
 ```
-/spawn-team 4 build a REST API
+/cru 4 build a REST API
 ```
 
 That's it — cru creates the tmux panes, applies the grid layout, and your workers are ready to go.
 
-## Commands
+## Skill
+
+The `/cru` skill is installed to `.claude/skills/` via `cru init`. It's the main way to use cru — type it in Claude Code and it handles team creation, spawning, and layout in one shot.
+
+```
+/cru 4 build a REST API
+/cru 6 refactor the auth module
+```
+
+## CLI
+
+For granular control or custom scripting, cru exposes the full CLI:
 
 ### `spawn <team>`
 
@@ -104,7 +115,7 @@ Show the resolved config (defaults merged with your overrides).
 Set up cru in the current project.
 
 ```bash
-cru init            # creates .cru.json + installs skills
+cru init            # creates .cru.json + installs /cru skill
 ```
 
 ## Configuration
@@ -179,16 +190,6 @@ Create `.cru.json` in your project (or `~/.config/cru/config.json` globally):
 }
 ```
 
-## Skills
-
-The `/spawn-team` skill lives in `skills/spawn-team/` and is copied to `.claude/skills/` via `cru init`.
-
-```
-/spawn-team 4 build a REST API
-```
-
-It creates a team, spawns N worker agents, and applies the grid layout automatically.
-
 ## Output formats
 
 All commands support incur's output formats:
@@ -223,7 +224,7 @@ src/
     └── tmux.ts                   # Tmux command helpers
 
 skills/
-└── spawn-team/SKILL.md           # Claude Code skill
+└── cru/SKILL.md                  # Claude Code skill
 ```
 
 Built with [incur](https://github.com/wevm/incur).
