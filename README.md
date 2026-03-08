@@ -61,12 +61,7 @@ That's it — cru creates the tmux panes, applies the grid layout, and your work
 
 ## Skill
 
-The `/cru` skill is installed to `.claude/skills/` via `cru init`. It's the main way to use cru — type it in Claude Code and it handles team creation, spawning, and layout in one shot.
-
-```
-/cru 4 build a REST API
-/cru 6 refactor the auth module
-```
+The `/cru` skill is installed to `.claude/skills/` via `cru init`. It handles team creation, spawning, and layout in one shot — the main way most people use cru.
 
 ## CLI
 
