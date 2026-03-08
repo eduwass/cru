@@ -1,24 +1,48 @@
 import { z } from 'incur'
-import { existsSync } from 'node:fs'
-import { join } from 'node:path'
-import { homedir } from 'node:os'
+import { existsSync, mkdirSync, cpSync } from 'node:fs'
+import { join, dirname } from 'node:path'
 import { CONFIG_NAME, DEFAULTS, writeConfig } from '../lib/config.js'
 
 export const init = {
-  description: 'Create a config file with defaults',
+  description: 'Set up agent-teams in the current project',
   options: z.object({
-    global: z.boolean().default(false).describe('Write to ~/.config instead of project'),
+    force: z.boolean().default(false).describe('Overwrite existing files'),
   }),
   run(c) {
-    const target = c.options.global
-      ? join(homedir(), '.config', 'agent-teams', 'config.json')
-      : join(process.cwd(), CONFIG_NAME)
+    const cwd = process.cwd()
+    const results = []
 
-    if (existsSync(target)) {
-      return { exists: true, path: target, message: 'Config already exists' }
+    // 1. Config file
+    const configPath = join(cwd, CONFIG_NAME)
+    if (!existsSync(configPath) || c.options.force) {
+      writeConfig(configPath, DEFAULTS)
+      results.push({ file: CONFIG_NAME, status: 'created' })
+    } else {
+      results.push({ file: CONFIG_NAME, status: 'exists (use --force to overwrite)' })
     }
 
-    writeConfig(target, DEFAULTS)
-    return { created: true, path: target }
+    // 2. Install skill to .claude/skills/
+    // src/commands/ → src/ → package root
+    const pkgRoot = dirname(dirname(import.meta.dirname))
+    const skillSrc = join(pkgRoot, 'skills', 'spawn-team')
+    const skillDest = join(cwd, '.claude', 'skills', 'spawn-team')
+
+    if (!existsSync(skillDest) || c.options.force) {
+      mkdirSync(join(cwd, '.claude', 'skills'), { recursive: true })
+      cpSync(skillSrc, skillDest, { recursive: true })
+      results.push({ file: '.claude/skills/spawn-team/', status: 'installed' })
+    } else {
+      results.push({ file: '.claude/skills/spawn-team/', status: 'exists (use --force to overwrite)' })
+    }
+
+    return {
+      done: true,
+      files: results,
+      next_steps: [
+        'agent-teams spawn <team> -n 4  — spawn workers',
+        'agent-teams grid <team>        — re-apply layout',
+        '/spawn-team 4 <task>           — via Claude Code skill',
+      ],
+    }
   },
 }

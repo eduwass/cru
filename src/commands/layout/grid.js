@@ -1,8 +1,8 @@
 import { z } from 'incur'
-import { loadConfig } from '../lib/config.js'
-import { readTeamConfig, findTeamWindow } from '../lib/teams.js'
-import { getWindowDimensions, listWindowPanes, applyLayout } from '../lib/tmux.js'
-import { buildLayout, computeGrid } from '../lib/layout.js'
+import { loadConfig } from '../../lib/config.js'
+import { readTeamConfig, findTeamWindow } from '../../lib/teams.js'
+import { getWindowDimensions, listWindowPanes, applyLayout } from '../../lib/tmux.js'
+import { buildLayout, computeGrid } from '../../lib/layout.js'
 
 export const grid = {
   description: "Apply grid layout to a team's tmux panes",

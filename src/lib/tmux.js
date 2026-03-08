@@ -32,3 +32,39 @@ export function applyLayout(windowId, layoutStr) {
   const full = `${tmuxChecksum(layoutStr)},${layoutStr}`
   tmux(`select-layout -t ${windowId} '${full}'`)
 }
+
+/** Get the current pane ID (the pane running this process). */
+export function currentPane() {
+  return tmux('display-message -p "#{pane_id}"')
+}
+
+/** Get the window ID for a given pane. */
+export function paneWindow(paneId) {
+  return tmux(`display-message -t ${paneId} -p "#{window_id}"`)
+}
+
+/** Split a pane and return the new pane ID. */
+export function splitPane(targetPane, { horizontal = false } = {}) {
+  const flag = horizontal ? '-v' : '-h'
+  return tmux(`split-window ${flag} -t ${targetPane} -P -F "#{pane_id}"`)
+}
+
+/** Send keys to a pane (runs a command). */
+export function sendKeys(paneId, text) {
+  // Use send-keys with literal string to avoid shell escaping issues
+  tmux(`send-keys -t ${paneId} ${JSON.stringify(text)} Enter`)
+}
+
+/** Kill a specific pane. */
+export function killPane(paneId) {
+  try {
+    tmux(`kill-pane -t ${paneId}`)
+  } catch {
+    // pane may already be dead
+  }
+}
+
+/** Select (focus) a pane. */
+export function selectPane(paneId) {
+  tmux(`select-pane -t ${paneId}`)
+}

@@ -1,16 +1,24 @@
 {
-  "name": "tmux-agent-teams",
+  "name": "agent-teams",
   "version": "1.0.0",
-  "description": "CLI for managing tmux agent team layouts",
+  "description": "Manage tmux layouts for Claude Code agent teams",
   "type": "module",
   "bin": {
     "agent-teams": "./src/cli.js"
   },
+  "files": [
+    "src/",
+    "skills/"
+  ],
   "scripts": {
     "dev": "bun src/cli.js"
   },
-  "keywords": [],
-  "author": "",
+  "keywords": [
+    "claude-code",
+    "agent-teams",
+    "tmux",
+    "layout"
+  ],
   "license": "ISC",
   "dependencies": {
     "incur": "^0.2.2"

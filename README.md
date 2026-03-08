@@ -1,6 +1,6 @@
 # agent-teams
 
-CLI for managing tmux layouts when running [Claude Code](https://claude.ai/code) agent teams. Lead pane on one side, workers in an auto-sized grid on the other.
+CLI for managing tmux layouts when running Claude Code agent teams. Lead pane on one side, workers in an auto-sized grid on the other.
 
 ```
 |            | worker-1 | worker-2 |
@@ -14,6 +14,7 @@ Built with [incur](https://github.com/wevm/incur).
 
 ```bash
 bun install
+bun run setup   # symlinks skills to .claude/skills/
 ```
 
 ## Quick start
@@ -52,25 +53,13 @@ agent-teams grid my-team --max-cols 3
 
 List all teams.
 
-```bash
-agent-teams list
-```
-
 ### `status <team>`
 
 Show team members and pane assignments.
 
-```bash
-agent-teams status my-team
-```
-
 ### `config`
 
 Show the resolved config (defaults merged with your overrides).
-
-```bash
-agent-teams config
-```
 
 ### `init`
 
@@ -153,17 +142,17 @@ Create `.agent-teams.json` in your project (or `~/.config/agent-teams/config.jso
 }
 ```
 
-## Claude Code integration
+## Skills
 
-### As a skill
-
-The repo includes a `/spawn-team` skill at `.claude/skills/spawn-team/SKILL.md` that spawns agents and applies the grid layout automatically:
+The `/spawn-team` skill lives in `skills/spawn-team/` and is symlinked to `.claude/skills/` via `bun run setup`.
 
 ```
 /spawn-team 4 build a REST API
 ```
 
-### Output formats
+It creates a team, spawns N worker agents, and applies the grid layout automatically.
+
+## Output formats
 
 All commands support incur's output formats:
 
@@ -189,6 +178,9 @@ src/
     ├── layout.js       # Grid math & tmux layout strings
     ├── teams.js        # Read Claude Code team configs
     └── tmux.js         # Tmux command helpers
+
+skills/
+└── spawn-team/SKILL.md # Skill source (symlinked to .claude/skills/)
 ```
 
 ## License

@@ -1,5 +1,5 @@
 import { existsSync } from 'node:fs'
-import { configPaths, loadConfig } from '../lib/config.js'
+import { configPaths, loadConfig } from '../../lib/config.js'
 
 export const config = {
   description: 'Show resolved config (merged defaults + overrides)',
