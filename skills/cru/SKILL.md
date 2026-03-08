@@ -1,7 +1,7 @@
 ---
 name: cru
 description: Spawn an agent team with workers arranged in a grid layout. Use when the user wants to create a team of agents.
-argument-hint: "[num-agents] <task description>"
+argument-hint: "<task description>"
 disable-model-invocation: true
 ---
 
