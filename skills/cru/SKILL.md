@@ -22,7 +22,7 @@ Parse `$ARGUMENTS` as a single string:
 
 3. **Spawn + layout in one shot:**
    ```bash
-   cru spawn <team-name> --workers <count>
+   cru spawn <team-name> -n <count>
    ```
    This splits tmux panes, starts `claude` in each, and applies the grid layout.
 
@@ -45,5 +45,5 @@ Parse `$ARGUMENTS` as a single string:
 ## Shutdown
 
 ```bash
-cru shutdown <team-name>
+cru kill <team-name>
 ```

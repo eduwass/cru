@@ -58,7 +58,7 @@ Run with `bun run test:e2e` (requires tmux + iTerm2 + it2 + Claude Code).
 
 - [x] `tests/e2e/helpers.ts` — shared utilities (poll, waitForPanes, getScreen, sendText, etc.)
 - [x] `tests/e2e/explicit-count.test.ts` — tests with explicit worker count
-- [x] `tests/e2e/auto-count.test.ts` — tests where the LLM decides worker count
+- [x] `tests/e2e/no-tmux.test.ts` — preflight error when not in tmux
 - [x] Polling with timeout via `poll()` helper — no arbitrary sleeps
 - [x] Cleanup in `afterAll` via `killTeam()`
 - [x] `bun run test:e2e` script in package.json (120s timeout)
@@ -79,16 +79,15 @@ Key commands used in the harness:
 
 | Task | Expected | Assertion |
 |------|----------|-----------|
-| `/cru 3 say hi` | 3 workers | pane count = 4, lead wider than workers, worker screens non-empty |
-| `/cru 2 compare bun vs deno` | 2 workers | pane count = 3 |
+| `/cru 3 say hi` | 3 workers | pane count = 4, workers loaded, tasks sent |
 
-**Auto count** (`tests/e2e/auto-count.test.ts`):
+**No tmux** (`tests/e2e/no-tmux.test.ts`):
 
-| Task | Expected | Assertion |
-|------|----------|-----------|
-| `/cru review security, perf, and tests` | ~3 workers | pane count in 4–5 |
-| `/cru compare bun vs deno` | ~2 workers | pane count in 3–4 |
-| `/cru break this into subtasks` | 2–5 workers | pane count in 3–6, worker screens non-empty |
+| Scenario | Expected | Assertion |
+|----------|----------|-----------|
+| `spawn` outside tmux | preflight error | error message, fix hint present |
+| `spawn` outside tmux in iTerm2 | `tmux -CC` hint | fix = `tmux -CC` |
+| `spawn` outside tmux in other terminal | `tmux` hint | fix = `tmux`, no `-CC` |
 
 ### Not yet implemented
 

@@ -128,6 +128,15 @@ Show team members and pane assignments.
 
 Show the resolved config (defaults merged with your overrides).
 
+### `doctor`
+
+Check environment requirements (tmux, claude, bun). Shows terminal-specific fix hints.
+
+```bash
+cru doctor
+cru doctor --json
+```
+
 ### `init`
 
 Set up cru in the current project.
@@ -224,6 +233,7 @@ cru status my-team --format md
 src/
 ├── cli.ts                        # Entrypoint
 ├── commands/
+│   ├── doctor.ts                 # Environment diagnostics
 │   ├── init.ts                   # Set up cru in a project
 │   ├── orchestration/
 │   │   ├── spawn.ts              # Spawn worker agents
