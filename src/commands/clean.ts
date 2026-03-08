@@ -1,6 +1,7 @@
 import { z } from 'incur'
 import { readdirSync, rmSync, statSync } from 'node:fs'
 import { join } from 'node:path'
+import { homedir } from 'node:os'
 import { teamsDir } from '@/lib/teams'
 
 export const clean = {
@@ -56,8 +57,11 @@ export const clean = {
       return { 'dry-run': true, would_remove: toRemove.length, teams: toRemove }
     }
 
+    const tasksBaseDir = join(homedir(), '.claude', 'tasks')
     for (const t of toRemove) {
       rmSync(join(dir, t.name), { recursive: true, force: true })
+      // Also clean up tasks for this team
+      try { rmSync(join(tasksBaseDir, t.name), { recursive: true, force: true }) } catch {}
     }
 
     if (!c.agent) {
