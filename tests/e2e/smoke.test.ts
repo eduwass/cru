@@ -1,54 +1,42 @@
 /**
- * Smoke test — verify the e2e harness plumbing works.
- *
- * Does NOT invoke /cru or spawn workers.
- * Just checks that it2, tmux, and the helpers are functional.
+ * Smoke test — verify the e2e test environment works.
  *
  * Run: bun test tests/e2e/smoke.test.ts
  */
-import { describe, test, expect } from 'bun:test'
-import { $ } from 'bun'
-import {
-  listPanes,
-  currentSessionId,
-  getScreen,
-  getBuffer,
-  paneCount,
-} from './helpers'
+import { describe, test, expect, beforeAll, afterAll } from 'bun:test'
+import { createTestEnv, checkPrereqs, type TestEnv } from './setup'
 
-describe('smoke: tooling check', () => {
-  test('it2 session current returns a session ID', async () => {
-    const id = await currentSessionId()
-    expect(id.length).toBeGreaterThan(0)
-    console.log('  session ID:', id)
+describe('smoke: prerequisites', () => {
+  test('it2, tmux, and claude are available', async () => {
+    await checkPrereqs() // throws if missing
+  })
+})
+
+describe('smoke: test environment', () => {
+  let env: TestEnv
+
+  beforeAll(async () => {
+    env = await createTestEnv()
+  }, 90_000)
+
+  afterAll(async () => {
+    await env?.teardown()
   })
 
-  test('tmux list-panes returns at least 1 pane', async () => {
-    const panes = await listPanes('%6') // current pane's window
-    expect(panes.length).toBeGreaterThanOrEqual(1)
-    console.log('  panes:', panes)
+  test('test env has a valid session ID', () => {
+    expect(env.sessionId.length).toBeGreaterThan(0)
+    console.log('  session ID:', env.sessionId)
   })
 
-  test('it2 get-screen returns content', async () => {
-    const id = await currentSessionId()
-    const screen = await getScreen(id, { waitStable: false })
+  test('Claude is running in the test session', async () => {
+    const screen = await env.captureScreen()
     expect(screen.length).toBeGreaterThan(0)
     console.log('  screen length:', screen.length, 'chars')
   })
 
-  test('it2 get-buffer returns content', async () => {
-    const id = await currentSessionId()
-    const buffer = await getBuffer(id)
-    expect(buffer.length).toBeGreaterThan(0)
-    console.log('  buffer length:', buffer.length, 'chars')
-  })
-
-  test('paneCount returns a number', async () => {
-    const id = await currentSessionId()
-    // Use the tmux window that contains the current pane
-    const windowId = await $`tmux display-message -p '#{window_id}'`.text()
-    const count = await paneCount(windowId.trim())
-    expect(count).toBeGreaterThanOrEqual(1)
-    console.log('  pane count:', count)
+  test('can list tmux panes', async () => {
+    const panes = await env.listPanes()
+    expect(panes.length).toBeGreaterThanOrEqual(1)
+    console.log('  panes:', panes.length)
   })
 })

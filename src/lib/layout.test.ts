@@ -104,6 +104,24 @@ describe('buildLayout', () => {
     )
   })
 
+  test('3 workers, lead left (incomplete last row expands)', () => {
+    const result = buildLayout(W, H, 0, [1, 2, 3], conf())
+    // Last row has 1 pane — it must span the full grid width (119), not just one column (59)
+    expect(result).toBe(
+      '200x100,0,0{80x100,0,0,0,119x100,81,0[119x49,81,0{59x49,81,0,1,59x49,141,0,2},119x50,81,50,3]}'
+    )
+  })
+
+  test('5 workers, lead left (incomplete last row with 2 of 3 cols)', () => {
+    const result = buildLayout(W, H, 0, [1, 2, 3, 4, 5], conf())
+    // Last row has 2 of 3 columns — last pane expands to fill remaining space
+    // colSizes = distribute(119, 3) = [39, 39, 39]
+    // Last pane gets 119 - 40 = 79 instead of 39
+    expect(result).toBe(
+      '200x100,0,0{80x100,0,0,0,119x100,81,0[119x49,81,0{39x49,81,0,1,39x49,121,0,2,39x49,161,0,3},119x50,81,50{39x50,81,50,4,79x50,121,50,5}]}'
+    )
+  })
+
   test('lead right flips layout order', () => {
     const c = conf({ lead: { position: 'right', size: 40 } })
     const result = buildLayout(W, H, 0, [1], c)

@@ -160,6 +160,71 @@ export async function getBuffer(
   return $`it2 get-buffer ${sessionId}`.text()
 }
 
+// ---------------------------------------------------------------------------
+// Debugging / snapshots
+// ---------------------------------------------------------------------------
+
+/**
+ * Capture a text snapshot of a tmux pane's contents.
+ * Useful for debugging test failures.
+ */
+export async function captureTmuxPane(paneId: string): Promise<string> {
+  return $`tmux capture-pane -t ${paneId} -p`.nothrow().text()
+}
+
+/**
+ * Take a screenshot of the frontmost iTerm2 window.
+ * Uses AppleScript to get the CGWindowID, then screencapture -l.
+ */
+export async function screenshot(path: string): Promise<void> {
+  const windowId = await $`osascript -e 'tell application "iTerm2" to get the id of the front window'`
+    .nothrow()
+    .text()
+  const id = windowId.trim()
+  if (id && /^\d+$/.test(id)) {
+    await $`screencapture -x -o -l${id} ${path}`.nothrow().quiet()
+  } else {
+    // Fallback: capture the main display only
+    await $`screencapture -x -D1 ${path}`.nothrow().quiet()
+  }
+}
+
+/**
+ * Save a debug snapshot: screenshot + text capture of all panes in a tmux window.
+ * Files are saved to tests/artifacts/ (gitignored).
+ */
+export async function saveDebugSnapshot(
+  tmuxWindow: string,
+  label: string,
+): Promise<string> {
+  const dir = `${import.meta.dir}/../artifacts`
+  const ts = Date.now()
+  const prefix = `${dir}/${label}-${ts}`
+
+  await $`mkdir -p ${dir}`.quiet()
+
+  // Screenshot
+  await screenshot(`${prefix}.png`)
+
+  // Text capture of each pane
+  const paneList = await $`tmux list-panes -t ${tmuxWindow} -F '#{pane_id} #{pane_index}'`
+    .nothrow()
+    .text()
+
+  const captures: string[] = []
+  for (const line of paneList.trim().split('\n').filter(Boolean)) {
+    const [paneId, index] = line.split(' ')
+    const content = await captureTmuxPane(paneId)
+    captures.push(`=== Pane ${index} (${paneId}) ===\n${content}`)
+  }
+
+  const textPath = `${prefix}-panes.txt`
+  await Bun.write(textPath, captures.join('\n\n'))
+
+  console.log(`  [debug] snapshot saved: ${prefix}.png + ${textPath}`)
+  return prefix
+}
+
 /**
  * Send text to an iTerm2 session.
  * By default, waits for a Claude prompt before sending.

@@ -35,7 +35,10 @@ export function applyLayout(windowId, layoutStr) {
 
 /** Get the current pane ID (the pane running this process). */
 export function currentPane() {
-  return tmux('display-message -p "#{pane_id}"')
+  // TMUX_PANE is set by tmux per-pane and inherited by child processes.
+  // This correctly identifies the pane even when it's not focused.
+  // Fallback to display-message for edge cases (e.g. running outside tmux pane).
+  return process.env.TMUX_PANE || tmux('display-message -p "#{pane_id}"')
 }
 
 /** Get the window ID for a given pane. */

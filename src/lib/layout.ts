@@ -116,7 +116,11 @@ function buildRows(opts) {
 
     for (let c = 0; c < cols; c++) {
       if (idx >= N) break
-      const cSize = colSizes[c]
+      let cSize = colSizes[c]
+      // Last pane in an incomplete row — expand to fill remaining space
+      if (idx === N - 1 && c < cols - 1) {
+        cSize = gridTotal - (secondaryOffset - gridOrigin)
+      }
       const x = isHorizontal ? secondaryOffset : primaryOffset
       const y = isHorizontal ? primaryOffset : secondaryOffset
       const w = isHorizontal ? cSize : rSize
