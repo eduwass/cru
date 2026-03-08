@@ -2,9 +2,7 @@
 
 # ◫ cru
 
-CLI for managing tmux layouts when running [Claude Code agent teams](https://code.claude.com/docs/en/agent-teams). 
-
-Lead pane on one side, workers in an auto-sized grid on the other.
+Layout for [Claude Code agent teams](https://code.claude.com/docs/en/agent-teams), fixed.
 
 ```
 ╭──────────────────┬────────────────┬────────────────╮
