@@ -15,6 +15,7 @@ import { config } from '@/commands/layout/config'
 // Meta
 import { init } from '@/commands/init'
 import { doctor } from '@/commands/doctor'
+import { logs } from '@/commands/logs'
 
 // Commands that require specific preflight checks
 const PREFLIGHT: Record<string, string[]> = {
@@ -49,4 +50,5 @@ Cli.create('cru', {
   // Meta
   .command('init', init)
   .command('doctor', doctor)
+  .command('logs', logs)
   .serve()

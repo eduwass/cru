@@ -124,6 +124,18 @@ List all teams.
 
 Show team members and pane assignments.
 
+### `logs [team]`
+
+Show team activity log — creation, member joins, and messages between agents. Omit the team name to see all teams merged into one timeline.
+
+```bash
+cru logs my-team
+cru logs                   # all teams
+cru logs -f                # follow live events
+cru logs --last 10         # last 10 events
+cru logs my-team --full    # show full message text
+```
+
 ### `config`
 
 Show the resolved config (defaults merged with your overrides).
@@ -235,6 +247,7 @@ src/
 ├── commands/
 │   ├── doctor.ts                 # Environment diagnostics
 │   ├── init.ts                   # Set up cru in a project
+│   ├── logs.ts                   # Team activity log
 │   ├── orchestration/
 │   │   ├── spawn.ts              # Spawn worker agents
 │   │   ├── kill.ts               # Kill worker panes
@@ -245,6 +258,7 @@ src/
 │       └── config.ts             # Show resolved config
 └── lib/
     ├── config.ts                 # Config loading & merging
+    ├── env.ts                    # Environment detection utilities
     ├── layout.ts                 # Grid math & tmux layout strings
     ├── preflight.ts              # Prerequisite checks
     ├── spawn.ts                  # Worker spawning logic
