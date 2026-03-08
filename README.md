@@ -5,11 +5,15 @@
 CLI for managing tmux layouts when running Claude Code agent teams. Lead pane on one side, workers in an auto-sized grid on the other.
 
 ```
-╭────────────┬───────────┬───────────╮
-│            │ ⚡ worker-1 │ ⚡ worker-2 │
-│    lead    ├───────────┼───────────┤
-│            │ ⚡ worker-3 │ ⚡ worker-4 │
-╰────────────┴───────────┴───────────╯
+╭──────────────────┬────────────────┬────────────────╮
+│                  │                │                │
+│                  │  ⚡ worker-1    │  ⚡ worker-2    │
+│       lead       │                │                │
+│                  ├────────────────┼────────────────┤
+│                  │                │                │
+│                  │  ⚡ worker-3    │  ⚡ worker-4    │
+│                  │                │                │
+╰──────────────────┴────────────────┴────────────────╯
 ```
 
 Built with [incur](https://github.com/wevm/incur).
