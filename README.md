@@ -1,6 +1,6 @@
-<p align="center"><img src="assets/logo.svg" width="96"/></p>
+<p align="center"><img src="assets/logo.svg" width="128"/></p>
 
-# cru
+# ◫ cru
 
 CLI for managing tmux layouts when running Claude Code agent teams. Lead pane on one side, workers in an auto-sized grid on the other.
 

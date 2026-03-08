@@ -1,7 +1,7 @@
 {
   "name": "cru-cli",
   "version": "1.0.0",
-  "description": "Manage tmux layouts for Claude Code agent teams",
+  "description": "◫ Manage tmux layouts for Claude Code agent teams",
   "type": "module",
   "bin": {
     "cru": "./src/cli.ts"

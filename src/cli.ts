@@ -15,7 +15,7 @@ import { config } from '@/commands/layout/config'
 import { init } from '@/commands/init'
 
 Cli.create('cru', {
-  description: 'Manage tmux layouts for Claude Code agent teams',
+  description: '◫ Manage tmux layouts for Claude Code agent teams',
   version: '1.0.0',
 })
   // Orchestration
