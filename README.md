@@ -8,8 +8,8 @@ CLI for managing tmux layouts when running Claude Code agent teams. Lead pane on
 ╭──────────────────┬────────────────┬────────────────╮
 │                  │                │                │
 │                  │  ⚡ worker-1    │  ⚡ worker-2    │
-│       lead       │                │                │
-│                  ├────────────────┼────────────────┤
+│                  │                │                │
+│       lead       ├────────────────┼────────────────┤
 │                  │                │                │
 │                  │  ⚡ worker-3    │  ⚡ worker-4    │
 │                  │                │                │
