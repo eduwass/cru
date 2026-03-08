@@ -81,7 +81,12 @@ The `/cru` skill is installed to `.claude/skills/` via `cru init`. It handles te
 
 ## CLI
 
-For granular control or custom scripting, cru exposes the full CLI:
+For granular control or custom scripting, cru exposes the full CLI. You can run these directly from Claude Code by prefixing with `!`:
+
+```
+! cru logs -f
+! cru status
+```
 
 ### `spawn <team>`
 

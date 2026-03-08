@@ -38,12 +38,20 @@ Parse `$ARGUMENTS` as a single string:
 
    Use the `fix` value from the error response as the command to show the user. Then **stop**.
 
-4. **Send the task** to each worker using SendMessage with their agent IDs, giving each worker its specific slice of the task.
+4. **Send the task** to each worker using SendMessage with their agent IDs. Give each worker:
+   - Its specific slice of the task
+   - Context about what the other workers are doing
+   - An explicit instruction to message teammates to share findings and discuss (workers won't do this spontaneously)
 
-5. **Report** the team is ready.
+5. **Report** the team is ready. Tell the user:
+   - What each worker is focused on
+   - `cru logs -f` to watch the team's activity live
+   - `cru kill <team-name>` to shut down when done
 
 ## Shutdown
 
 ```bash
 cru kill <team-name>
 ```
+
+Team data (logs, messages) is preserved after kill — reviewable via `cru logs <team>`. Use `cru clean` to remove old teams.

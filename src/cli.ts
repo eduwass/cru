@@ -20,7 +20,7 @@ import { clean } from '@/commands/clean'
 
 // Commands that require specific preflight checks
 const PREFLIGHT: Record<string, string[]> = {
-  spawn: ['tmux-session', 'claude'],
+  spawn: ['terminal', 'tmux-session', 'claude'],
   kill: ['tmux'],
   grid: ['tmux-session'],
 }

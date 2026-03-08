@@ -14,9 +14,20 @@ export function tmuxChecksum(layout) {
 }
 
 export function getWindowDimensions(windowId) {
+  // display-message can return empty in control mode — use list-windows as fallback
   const dims = tmux(`display-message -t ${windowId} -p "#{window_width}x#{window_height}"`)
-  const [w, h] = dims.split('x').map(Number)
-  return { w, h }
+  if (dims && dims.includes('x')) {
+    const [w, h] = dims.split('x').map(Number)
+    if (w && h) return { w, h }
+  }
+  const fallback = tmux(`list-windows -a -F "#{window_id} #{window_width} #{window_height}"`)
+    .split('\n')
+    .find((l) => l.startsWith(windowId + ' '))
+  if (fallback) {
+    const [, w, h] = fallback.split(' ')
+    return { w: Number(w), h: Number(h) }
+  }
+  throw new Error(`Cannot get dimensions for window ${windowId}`)
 }
 
 export function listWindowPanes(windowId) {
@@ -35,15 +46,32 @@ export function applyLayout(windowId, layoutStr) {
 
 /** Get the current pane ID (the pane running this process). */
 export function currentPane() {
-  // TMUX_PANE is set by tmux per-pane and inherited by child processes.
-  // This correctly identifies the pane even when it's not focused.
-  // Fallback to display-message for edge cases (e.g. running outside tmux pane).
-  return process.env.TMUX_PANE || tmux('display-message -p "#{pane_id}"')
+  // TMUX_PANE is set per-pane by tmux — most reliable source
+  const envPane = process.env.TMUX_PANE
+  if (envPane) {
+    // Verify it still exists (can be stale in iTerm2 tmux -CC)
+    try {
+      const allPanes = tmux('list-panes -a -F "#{pane_id}"').split('\n')
+      if (allPanes.includes(envPane)) return envPane
+    } catch {}
+  }
+  // Fallback — may not work in control mode but worth trying
+  return tmux('display-message -p "#{pane_id}"')
 }
 
 /** Get the window ID for a given pane. */
 export function paneWindow(paneId) {
-  return tmux(`display-message -t ${paneId} -p "#{window_id}"`)
+  // display-message can return empty in tmux control mode (tmux -CC / VS Code)
+  const result = tmux(`display-message -t ${paneId} -p "#{window_id}"`)
+  if (result) return result
+
+  // Fallback: search all panes
+  const lines = tmux('list-panes -a -F "#{pane_id} #{window_id}"').split('\n')
+  for (const line of lines) {
+    const [pid, wid] = line.split(' ')
+    if (pid === paneId) return wid
+  }
+  throw new Error(`Cannot find window for pane ${paneId}`)
 }
 
 /** Split a pane and return the new pane ID. */

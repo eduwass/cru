@@ -25,11 +25,15 @@ export function inTmux(): boolean {
 
 /** Detect terminal emulator from environment. */
 export function detectTerminal(): string {
+  // Check TERM_PROGRAM first — it reflects the actual terminal in use,
+  // while vars like ITERM_SESSION_ID can leak from parent processes.
+  const tp = process.env.TERM_PROGRAM
+  if (tp === 'vscode') return 'vscode'
+  if (tp === 'iTerm.app') return 'iterm2'
+  if (tp === 'Apple_Terminal') return 'terminal'
+  if (tp === 'WezTerm') return 'wezterm'
+  if (tp === 'Alacritty') return 'alacritty'
   if (process.env.ITERM_SESSION_ID) return 'iterm2'
-  if (process.env.TERM_PROGRAM === 'iTerm.app') return 'iterm2'
-  if (process.env.TERM_PROGRAM === 'Apple_Terminal') return 'terminal'
-  if (process.env.TERM_PROGRAM === 'WezTerm') return 'wezterm'
-  if (process.env.TERM_PROGRAM === 'Alacritty') return 'alacritty'
   if (process.env.WT_SESSION) return 'windows-terminal'
-  return process.env.TERM_PROGRAM || 'unknown'
+  return tp || 'unknown'
 }

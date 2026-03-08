@@ -50,6 +50,15 @@ export function preflight(...checks) {
           errors.push({ check: 'claude', message: 'Claude Code CLI is not installed', hint: platformHint('claude') })
         }
         break
+
+      case 'terminal':
+        if (terminal === 'vscode') {
+          errors.push({
+            check: 'terminal',
+            message: 'VS Code terminal cannot display tmux panes. Use iTerm2 or a standalone terminal with tmux.',
+          })
+        }
+        break
     }
   }
 
