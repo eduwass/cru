@@ -18,17 +18,33 @@ Parse `$ARGUMENTS` as a single string:
 
 1. **Determine worker count and task** from `$ARGUMENTS` using the rules above.
 
-2. **Create the team** using TeamCreate.
+2. **Run environment check:**
+   ```bash
+   bun src/cli.js doctor --json
+   ```
+   If `"ok": false` → **STOP immediately.** Do NOT create a team or try workarounds.
 
-3. **Spawn + layout in one shot:**
+   Tell the user what failed. Be brief — problem and fix, nothing else. Example for missing tmux session:
+
+   > **cru needs tmux.** Start a tmux session first:
+   >
+   > `tmux -CC`
+   >
+   > Then pick up where you left off with `claude --continue` and re-run `/cru`.
+
+   Then **stop**. Do not proceed.
+
+3. **Create the team** using TeamCreate.
+
+4. **Spawn + layout in one shot:**
    ```bash
    bun src/cli.js spawn <team-name> --workers <count>
    ```
    This splits tmux panes, starts `claude` in each, and applies the grid layout.
 
-4. **Send the task** to each worker using SendMessage with their agent IDs, giving each worker its specific slice of the task.
+5. **Send the task** to each worker using SendMessage with their agent IDs, giving each worker its specific slice of the task.
 
-5. **Report** the team is ready.
+6. **Report** the team is ready.
 
 ## Shutdown
 

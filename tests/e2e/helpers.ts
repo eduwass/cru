@@ -166,10 +166,12 @@ export async function getBuffer(
 
 /**
  * Capture a text snapshot of a tmux pane's contents.
- * Useful for debugging test failures.
+ * Uses -S to grab scrollback history, not just the visible area.
  */
 export async function captureTmuxPane(paneId: string): Promise<string> {
-  return $`tmux capture-pane -t ${paneId} -p`.nothrow().text()
+  // -S -500: start 500 lines back in scrollback
+  // -J: join wrapped lines for readable output
+  return $`tmux capture-pane -t ${paneId} -p -S -500 -J`.nothrow().text()
 }
 
 /**
@@ -208,15 +210,15 @@ export async function saveDebugSnapshot(
   await screenshot(`${prefix}.png`)
 
   // Text capture of each pane
-  const paneList = await $`tmux list-panes -t ${tmuxWindow} -F '#{pane_id} #{pane_index}'`
+  const paneList = await $`tmux list-panes -t ${tmuxWindow} -F '#{pane_id} #{pane_index} #{pane_width} #{pane_height}'`
     .nothrow()
     .text()
 
   const captures: string[] = []
   for (const line of paneList.trim().split('\n').filter(Boolean)) {
-    const [paneId, index] = line.split(' ')
+    const [paneId, index, width, height] = line.split(' ')
     const content = await captureTmuxPane(paneId)
-    captures.push(`=== Pane ${index} (${paneId}) ===\n${content}`)
+    captures.push(`=== Pane ${index} (${paneId}) ${width}x${height} ===\n${content}`)
   }
 
   const textPath = `${prefix}-panes.txt`

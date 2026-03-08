@@ -13,6 +13,7 @@ import { config } from '@/commands/layout/config'
 
 // Meta
 import { init } from '@/commands/init'
+import { doctor } from '@/commands/doctor'
 
 Cli.create('cru', {
   description: '◫ Manage tmux layouts for Claude Code agent teams',
@@ -28,4 +29,5 @@ Cli.create('cru', {
   .command('config', config)
   // Meta
   .command('init', init)
+  .command('doctor', doctor)
   .serve()

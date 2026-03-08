@@ -112,15 +112,11 @@ export async function createTestEnv(testName = 'test'): Promise<TestEnv> {
 
   console.log(`  [setup] native window session=${nativeSessionId}`)
 
-  // 2. Resize the native window to be large enough for a proper layout
+  // 2. Start tmux -CC in the new window
   await Bun.sleep(500)
-  await $`it2 window set-frame ${nativeSessionId} 0 0 1600 1000`.nothrow().quiet()
-  await Bun.sleep(200)
-
-  // 3. Start tmux -CC in the new window — this creates a tmux-integrated session
   await $`it2 session send-text ${nativeSessionId} --skip-confirm ${'tmux -CC new-session -s ' + tmuxSession}`
 
-  // 4. Wait for the tmux session to appear and find its pane info
+  // 3. Wait for the tmux session to appear and find its pane info
   await poll(
     async () => {
       const out = await $`tmux has-session -t ${tmuxSession}`.nothrow().quiet()
@@ -153,6 +149,16 @@ export async function createTestEnv(testName = 'test'): Promise<TestEnv> {
   )
 
   console.log(`  [setup] iterm session=${sessionId}`)
+
+  // 5. Resize the iTerm2 window to a proper size for readable layouts
+  const sessionInfo: any[] = await $`it2 session list --format json`.nothrow().json()
+  const itermSession = sessionInfo.find((s) => s.SessionID === sessionId)
+  if (itermSession?.WindowID) {
+    const frame = '{"origin":{"x":0,"y":0},"size":{"width":1400,"height":900}}'
+    await $`it2 window set-property ${itermSession.WindowID} frame ${frame}`.nothrow().quiet()
+    await Bun.sleep(500) // let iTerm2 + tmux settle after resize
+    console.log(`  [setup] resized window ${itermSession.WindowID} to 1400x900`)
+  }
 
   // 5. Set up the test environment — install skill, start Claude
   await $`tmux send-keys -t ${leadPaneId} ${'cd ' + cwd} Enter`.nothrow()
