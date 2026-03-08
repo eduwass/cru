@@ -12,8 +12,8 @@ const COLORS: Record<string, string> = {
   magenta: '\x1b[35m',
   purple: '\x1b[35m',
   cyan: '\x1b[36m',
-  white: '\x1b[37m',
 }
+const AUTO_COLORS = ['cyan', 'blue', 'green', 'yellow', 'magenta', 'red']
 const DIM = '\x1b[2m'
 const BOLD = '\x1b[1m'
 const RESET = '\x1b[0m'
@@ -83,9 +83,10 @@ function readInboxes(teamName: string): Event[] {
 
 function teamEvents(teamName: string): { events: Event[]; colorMap: Record<string, string> } {
   const config = readTeamConfig(teamName)
-  const colorMap: Record<string, string> = { 'team-lead': 'white' }
+  const colorMap: Record<string, string> = {}
+  let autoIdx = 0
   for (const m of config.members) {
-    if (m.color) colorMap[m.name] = m.color
+    colorMap[m.name] = m.color && COLORS[m.color] ? m.color : AUTO_COLORS[autoIdx++ % AUTO_COLORS.length]
   }
 
   const events: Event[] = []
@@ -118,7 +119,17 @@ function time(ts: number): string {
   return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}:${String(d.getSeconds()).padStart(2, '0')}`
 }
 
-function colorize(name: string, color?: string): string {
+function hashColor(name: string): string {
+  let h = 0
+  for (let i = 0; i < name.length; i++) h = ((h << 5) - h + name.charCodeAt(i)) | 0
+  return AUTO_COLORS[Math.abs(h) % AUTO_COLORS.length]
+}
+
+function colorize(name: string, color: string | undefined, colorMap?: Record<string, string>): string {
+  if (!color && colorMap) {
+    if (!colorMap[name]) colorMap[name] = hashColor(name)
+    color = colorMap[name]
+  }
   const c = color && COLORS[color]
   return c ? `${c}${name}${RESET}` : name
 }
@@ -135,27 +146,27 @@ function formatEvents(
     const prefix = opts.showTeam ? `${DIM}${e.team}${RESET} ` : ''
     switch (e.type) {
       case 'created':
-        lines.push(`${t}  ${prefix}${DIM}●${RESET} team created`)
+        lines.push(`${t}  ${prefix}${DIM}◉ team created${RESET}`)
         break
       case 'joined':
-        lines.push(`${t}  ${prefix}${DIM}→${RESET} ${colorize(e.agent!, e.color)} joined`)
+        lines.push(`${t}  ${prefix}${colorize('⊕', e.color, colorMap)} ${colorize(e.agent!, e.color, colorMap)} joined`)
         break
       case 'message': {
-        const from = colorize(e.from!, colorMap[e.from!])
-        const to = colorize(e.to!, colorMap[e.to!])
+        const from = colorize(e.from!, colorMap[e.from!], colorMap)
+        const to = colorize(e.to!, colorMap[e.to!], colorMap)
         const text = opts.full ? e.text : truncate(e.text || '', 80)
         switch (e.kind) {
           case 'task':
-            lines.push(`${t}  ${prefix}${BOLD}>${RESET} ${from} → ${to}: ${text}`)
+            lines.push(`${t}  ${prefix}${BOLD}◉${RESET} ${from} → ${to}: ${text}`)
             break
           case 'idle':
-            lines.push(`${t}  ${prefix}${DIM}~ ${e.from} idle${RESET}`)
+            lines.push(`${t}  ${prefix}${DIM}○${RESET} ${from} ${DIM}idle${RESET}`)
             break
           case 'shutdown':
-            lines.push(`${t}  ${prefix}${DIM}x ${e.from} → ${e.to}: ${text}${RESET}`)
+            lines.push(`${t}  ${prefix}${DIM}⊘${RESET} ${from} → ${to}${DIM}: ${text}${RESET}`)
             break
           default:
-            lines.push(`${t}  ${prefix}  ${from} → ${to}: ${text}`)
+            lines.push(`${t}  ${prefix}● ${from} → ${to}: ${text}`)
             break
         }
         break
@@ -178,23 +189,31 @@ export const logs = {
   }),
   alias: { follow: 'f' },
   async run(c) {
-    const teamNames = c.args.team ? [c.args.team] : listTeams()
+    const fixedTeam = c.args.team
+    const getTeams = () => fixedTeam ? [fixedTeam] : listTeams()
+
+    const teamNames = getTeams()
     if (teamNames.length === 0) return { events: [], message: 'No teams found' }
 
-    const allEvents: Event[] = []
     const mergedColorMap: Record<string, string> = {}
 
-    for (const name of teamNames) {
-      try {
-        const { events, colorMap } = teamEvents(name)
-        allEvents.push(...events)
-        Object.assign(mergedColorMap, colorMap)
-      } catch {}
+    const collectEvents = () => {
+      const names = getTeams()
+      const events: Event[] = []
+      for (const name of names) {
+        try {
+          const result = teamEvents(name)
+          events.push(...result.events)
+          Object.assign(mergedColorMap, result.colorMap)
+        } catch {}
+      }
+      events.sort((a, b) => a.ts - b.ts)
+      return { events, teams: names }
     }
 
-    allEvents.sort((a, b) => a.ts - b.ts)
+    const { events: allEvents } = collectEvents()
 
-    const limit = c.options.last ?? (c.args.team ? undefined : 50)
+    const limit = c.options.last ?? (fixedTeam ? undefined : 50)
     const display = limit ? allEvents.slice(-limit) : allEvents
 
     if (c.agent) {
@@ -211,7 +230,7 @@ export const logs = {
       }
     }
 
-    const showTeam = teamNames.length > 1
+    const showTeam = !fixedTeam || teamNames.length > 1
     if (!showTeam) {
       const created = new Date(allEvents[0]?.ts || Date.now())
       const date = created.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
@@ -229,35 +248,40 @@ export const logs = {
     }
 
     // Follow mode: poll for new events every 2s
-    let seen = allEvents.length
-    const poll = () => {
-      const fresh: Event[] = []
-      const freshColorMap: Record<string, string> = {}
-      for (const name of teamNames) {
-        try {
-          const { events, colorMap } = teamEvents(name)
-          fresh.push(...events)
-          Object.assign(freshColorMap, colorMap)
-        } catch {}
-      }
-      fresh.sort((a, b) => a.ts - b.ts)
-      Object.assign(mergedColorMap, freshColorMap)
+    console.log(`${DIM}following — c: clear, q: quit${RESET}\n`)
 
-      if (fresh.length > seen) {
-        const newEvents = fresh.slice(seen)
+    let lastTs = allEvents.length > 0 ? allEvents[allEvents.length - 1].ts : 0
+    const poll = () => {
+      const { events: fresh } = collectEvents()
+
+      const newEvents = fresh.filter((e) => e.ts > lastTs)
+      if (newEvents.length > 0) {
         process.stdout.write(formatEvents(newEvents, mergedColorMap, fmtOpts) + '\n')
-        seen = fresh.length
+        lastTs = newEvents[newEvents.length - 1].ts
       }
     }
 
     const interval = setInterval(poll, 2000)
-    process.on('SIGINT', () => {
+    const quit = () => {
       clearInterval(interval)
+      if (process.stdin.isTTY) process.stdin.setRawMode(false)
       console.log(`\n${DIM}stopped${RESET}`)
       process.exit(0)
-    })
+    }
 
-    // Keep process alive
+    // Handle keyboard input
+    if (process.stdin.isTTY) {
+      process.stdin.setRawMode(true)
+      process.stdin.resume()
+      process.stdin.on('data', (key) => {
+        if (key[0] === 3 || key[0] === 0x71) quit() // Ctrl+C or q
+        if (key[0] === 0x63 || key[0] === 12) { // c or Ctrl+L
+          process.stdout.write('\x1b[2J\x1b[H') // clear screen
+        }
+      })
+    }
+
+    process.on('SIGINT', quit)
     await new Promise(() => {})
   },
 }

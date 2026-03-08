@@ -3,6 +3,7 @@ import { loadConfig } from '@/lib/config'
 import { readTeamConfig, findTeamWindow } from '@/lib/teams'
 import { getWindowDimensions, listWindowPanes, applyLayout } from '@/lib/tmux'
 import { buildLayout, computeGrid } from '@/lib/layout'
+import { loadPanes } from '@/lib/panes'
 
 export const grid = {
   description: "Apply grid layout to a team's tmux panes",
@@ -26,16 +27,28 @@ export const grid = {
     if (c.options['max-rows'] != null) conf.layout.grid.maxRows = c.options['max-rows']
 
     const teamName = c.args.team
-    const teamConf = readTeamConfig(teamName)
-    const windowId = findTeamWindow(teamName)
+
+    // Try cru's pane tracking first, then Claude's config
+    const cruPanes = loadPanes(teamName)
+    let windowId: string | null = null
+    let workerPaneIds: Set<string>
+
+    if (cruPanes) {
+      windowId = cruPanes.windowId
+      workerPaneIds = new Set(cruPanes.workers.map((w) => w.paneId))
+    } else {
+      windowId = findTeamWindow(teamName)
+      const teamConf = readTeamConfig(teamName)
+      workerPaneIds = new Set(
+        teamConf.members.filter((m) => m.tmuxPaneId).map((m) => m.tmuxPaneId),
+      )
+    }
+
     if (!windowId) return c.error({ code: 'NO_WINDOW', message: 'Could not find tmux window for team' })
 
     const { w: W, h: H } = getWindowDimensions(windowId)
     const panes = listWindowPanes(windowId)
 
-    const workerPaneIds = new Set(
-      teamConf.members.filter((m) => m.tmuxPaneId).map((m) => m.tmuxPaneId),
-    )
     const leadPane = panes.find((p) => !workerPaneIds.has(p.id))
     const workerPanes = panes.filter((p) => workerPaneIds.has(p.id))
 
@@ -56,8 +69,8 @@ export const grid = {
       const row = []
       for (let col = 0; col < cols; col++) {
         if (idx < N) {
-          const member = teamConf.members.find((m) => m.tmuxPaneId === workerPanes[idx].id)
-          row.push(member?.name || `worker-${idx + 1}`)
+          const cruWorker = cruPanes?.workers[idx]
+          row.push(cruWorker?.name || `worker-${idx + 1}`)
           idx++
         }
       }

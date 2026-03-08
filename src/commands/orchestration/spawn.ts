@@ -1,9 +1,10 @@
 import { z } from 'incur'
 import { readTeamConfig } from '@/lib/teams'
 import { loadConfig } from '@/lib/config'
-import { currentPane, paneWindow, getWindowDimensions, listWindowPanes, applyLayout } from '@/lib/tmux'
+import { currentPane, paneWindow, getWindowDimensions, listWindowPanes, applyLayout, killPane } from '@/lib/tmux'
 import { buildLayout, computeGrid } from '@/lib/layout'
 import { spawnWorkers } from '@/lib/spawn'
+import { savePanes } from '@/lib/panes'
 
 export const spawn = {
   description: 'Spawn worker agents in tmux panes and apply grid layout',
@@ -34,6 +35,15 @@ export const spawn = {
     const leadPane = currentPane()
     const windowId = paneWindow(leadPane)
 
+    // Validate: only the lead pane should exist in this window
+    const existingPanes = listWindowPanes(windowId)
+    if (existingPanes.length > 1) {
+      return c.error({
+        code: 'EXTRA_PANES',
+        message: `Window has ${existingPanes.length} panes (expected 1). Close extra panes or use a clean tmux window.`,
+      })
+    }
+
     const panes = spawnWorkers(leadPane, {
       teamName,
       parentSessionId,
@@ -41,25 +51,42 @@ export const spawn = {
       cwd,
     })
 
-    // Apply grid layout
-    const conf = loadConfig()
-    if (c.options['lead-size'] != null) conf.layout.lead.size = c.options['lead-size']
+    // Save pane tracking before layout (so kill works even if layout fails)
+    savePanes(teamName, {
+      leadPane,
+      windowId,
+      workers: panes.map((p) => ({ name: p.name, paneId: p.paneId, color: p.color })),
+      createdAt: Date.now(),
+    })
 
-    const { w: W, h: H } = getWindowDimensions(windowId)
-    const allPanes = listWindowPanes(windowId)
+    // Apply grid layout — clean up spawned panes on failure
+    try {
+      const conf = loadConfig()
+      if (c.options['lead-size'] != null) conf.layout.lead.size = c.options['lead-size']
 
-    const workerPaneIds = new Set(panes.map((p) => p.paneId))
-    const leadPaneEntry = allPanes.find((p) => !workerPaneIds.has(p.id))
-    const workerPaneEntries = allPanes.filter((p) => workerPaneIds.has(p.id))
+      const { w: W, h: H } = getWindowDimensions(windowId)
+      const allPanes = listWindowPanes(windowId)
 
-    if (leadPaneEntry && workerPaneEntries.length > 0) {
-      const leadId = leadPaneEntry.id.replace('%', '')
-      const workerIds = workerPaneEntries.map((p) => p.id.replace('%', ''))
-      const layoutStr = buildLayout(W, H, leadId, workerIds, conf.layout)
-      applyLayout(windowId, layoutStr)
+      const workerPaneIds = new Set(panes.map((p) => p.paneId))
+      const leadPaneEntry = allPanes.find((p) => !workerPaneIds.has(p.id))
+      const workerPaneEntries = allPanes.filter((p) => workerPaneIds.has(p.id))
+
+      if (leadPaneEntry && workerPaneEntries.length > 0) {
+        const leadId = leadPaneEntry.id.replace('%', '')
+        const workerIds = workerPaneEntries.map((p) => p.id.replace('%', ''))
+        const layoutStr = buildLayout(W, H, leadId, workerIds, conf.layout)
+        applyLayout(windowId, layoutStr)
+      }
+    } catch (err) {
+      // Layout failed — kill orphaned panes so user isn't left with a mess
+      for (const p of panes) killPane(p.paneId)
+      return c.error({
+        code: 'LAYOUT_FAILED',
+        message: `Layout failed, cleaned up ${panes.length} panes. ${err instanceof Error ? err.message : err}`,
+      })
     }
 
-    const { cols, rows } = computeGrid(numWorkers, conf.layout)
+    const { cols, rows } = computeGrid(numWorkers, loadConfig().layout)
     const grid = []
     let idx = 0
     for (let r = 0; r < rows; r++) {

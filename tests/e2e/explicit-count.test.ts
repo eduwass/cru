@@ -3,14 +3,16 @@
  *
  * Run: bun test tests/e2e/explicit-count.test.ts --timeout 300000
  */
+import { $ } from 'bun'
 import { describe, test, expect, beforeAll, afterAll } from 'bun:test'
 import { createTestEnv, type TestEnv } from './setup'
-import { saveDebugSnapshot, captureTmuxPane, poll } from './helpers'
+import { saveDebugSnapshot, saveLogs, captureTmuxPane, poll } from './helpers'
 
 const TIMEOUT = 180_000
 
 describe('/cru with explicit count', () => {
   let env: TestEnv
+  let teamName: string | null = null
 
   beforeAll(async () => {
     env = await createTestEnv('explicit-count')
@@ -18,7 +20,16 @@ describe('/cru with explicit count', () => {
 
   afterAll(async () => {
     if (env) {
+      // Capture final artifacts before cleanup
+      await saveLogs('final', env.runDir, teamName ?? undefined)
       await saveDebugSnapshot(env.tmuxWindow, 'final', env.runDir)
+
+      // Kill worker panes via cru
+      if (teamName) {
+        await $`bun src/cli.ts kill ${teamName}`.nothrow().quiet()
+        console.log(`  [cleanup] killed team ${teamName}`)
+      }
+
       await env.teardown()
     }
   })
@@ -31,6 +42,12 @@ describe('/cru with explicit count', () => {
       // 1. Wait for panes to appear (lead + 3 workers = 4)
       const panes = await env.waitForPaneCount(4, 60_000)
       expect(panes.length).toBe(4)
+
+      // Extract team name from lead pane (shown in spawn command output or status bar)
+      const leadContent = await captureTmuxPane(env.leadPaneId)
+      const spawnMatch = leadContent.match(/spawn\s+([\w-]+)/)
+      if (spawnMatch) teamName = spawnMatch[1]
+      console.log(`  team: ${teamName}`)
 
       await saveDebugSnapshot(env.tmuxWindow, '1-panes-created', env.runDir)
 
@@ -50,11 +67,9 @@ describe('/cru with explicit count', () => {
       await saveDebugSnapshot(env.tmuxWindow, '2-workers-ready', env.runDir)
 
       // 3. Wait for lead to finish (it should send tasks via SendMessage then go idle)
-      // The lead's screen should show the SendMessage calls or completion
       await poll(
         async () => {
           const content = await captureTmuxPane(env.leadPaneId)
-          // Lead is done when it shows cost/time (status bar) after sending tasks
           if (content.includes('SendMessage') || content.includes('$0.')) return true
           return null
         },
@@ -62,6 +77,7 @@ describe('/cru with explicit count', () => {
       )
 
       await saveDebugSnapshot(env.tmuxWindow, '3-tasks-sent', env.runDir)
+      await saveLogs('3-tasks-sent', env.runDir, teamName ?? undefined)
 
       // Log layout info
       for (const p of panes) {

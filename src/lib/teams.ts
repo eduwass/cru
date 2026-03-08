@@ -2,6 +2,7 @@ import { readFileSync, readdirSync } from 'node:fs'
 import { join } from 'node:path'
 import { homedir } from 'node:os'
 import { tmux } from './tmux'
+import { loadPanes } from './panes'
 
 export function teamsDir() {
   return join(homedir(), '.claude', 'teams')
@@ -29,6 +30,11 @@ export function listTeams() {
 }
 
 export function findTeamWindow(teamName) {
+  // Primary: cru's own pane tracking
+  const cruPanes = loadPanes(teamName)
+  if (cruPanes) return cruPanes.windowId
+
+  // Fallback: search via Claude's team config
   const config = readTeamConfig(teamName)
   const workerPaneIds = config.members
     .filter((m) => m.tmuxPaneId)

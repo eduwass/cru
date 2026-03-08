@@ -229,6 +229,40 @@ export async function saveDebugSnapshot(
 }
 
 /**
+ * Capture `cru logs` output and team data files to the artifacts directory.
+ * Saves logs (ANSI stripped) and copies the team's .claude/teams/ directory.
+ */
+export async function saveLogs(
+  label: string,
+  runDir?: string,
+  teamName?: string,
+): Promise<string> {
+  const dir = runDir ?? `${import.meta.dir}/../artifacts`
+  const prefix = runDir ? `${dir}/${label}` : `${dir}/${label}-${Date.now()}`
+
+  await $`mkdir -p ${dir}`.quiet()
+
+  const teamArg = teamName ?? ''
+  const logsOutput = await $`bun src/cli.ts logs ${teamArg} --full`.nothrow().text()
+
+  // Strip ANSI codes for readable text
+  const clean = logsOutput.replace(/\x1b\[[0-9;]*m/g, '')
+
+  await Bun.write(`${prefix}-logs.txt`, clean)
+  console.log(`  [logs] ${prefix}-logs.txt`)
+
+  // Copy team data files (config.json, inboxes/, cru-panes.json)
+  if (teamName) {
+    const teamDir = `${process.env.HOME}/.claude/teams/${teamName}`
+    const destDir = `${dir}/${label}-team-data`
+    await $`cp -r ${teamDir} ${destDir}`.nothrow().quiet()
+    console.log(`  [team] ${destDir}`)
+  }
+
+  return `${prefix}-logs.txt`
+}
+
+/**
  * Create a run directory for a test file. Returns the absolute path.
  * Format: tests/artifacts/<YYYYMMDD-HHMMSS>-<test-name>/
  */

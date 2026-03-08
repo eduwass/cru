@@ -1,6 +1,7 @@
 import { z } from 'incur'
 import { readTeamConfig } from '@/lib/teams'
 import { killPane } from '@/lib/tmux'
+import { loadPanes } from '@/lib/panes'
 
 export const kill = {
   description: 'Kill all worker panes for a team',
@@ -9,15 +10,27 @@ export const kill = {
   }),
   run(c) {
     const teamName = c.args.team
-    const config = readTeamConfig(teamName)
+    const killed: Array<{ name: string; pane: string }> = []
 
-    const workers = config.members.filter((m) => m.tmuxPaneId)
-    const killed = []
-
-    for (const member of workers) {
-      killPane(member.tmuxPaneId)
-      killed.push({ name: member.name, pane: member.tmuxPaneId })
+    // Primary: use cru's own pane tracking
+    const cruPanes = loadPanes(teamName)
+    if (cruPanes && cruPanes.workers.length > 0) {
+      for (const w of cruPanes.workers) {
+        killPane(w.paneId)
+        killed.push({ name: w.name, pane: w.paneId })
+      }
+      return { team: teamName, killed: killed.length, panes: killed }
     }
+
+    // Fallback: use Claude's team config
+    try {
+      const config = readTeamConfig(teamName)
+      const workers = config.members.filter((m) => m.tmuxPaneId)
+      for (const member of workers) {
+        killPane(member.tmuxPaneId)
+        killed.push({ name: member.name, pane: member.tmuxPaneId })
+      }
+    } catch {}
 
     return { team: teamName, killed: killed.length, panes: killed }
   },
