@@ -2,7 +2,9 @@
 
 # ◫ cru
 
-CLI for managing tmux layouts when running Claude Code agent teams. Lead pane on one side, workers in an auto-sized grid on the other.
+CLI for managing tmux layouts when running [Claude Code agent teams](https://code.claude.com/docs/en/agent-teams). 
+
+Lead pane on one side, workers in an auto-sized grid on the other.
 
 ```
 ╭──────────────────┬────────────────┬────────────────╮
@@ -16,12 +18,14 @@ CLI for managing tmux layouts when running Claude Code agent teams. Lead pane on
 ╰──────────────────┴────────────────┴────────────────╯
 ```
 
-Built with [incur](https://github.com/wevm/incur).
-
 ## Install
 
 ```bash
-bun install
+npm install -g cru-cli
+# or
+pnpm add -g cru-cli
+# or
+bun add -g cru-cli
 ```
 
 ## Quick start
@@ -210,6 +214,8 @@ src/
 skills/
 └── spawn-team/SKILL.md           # Claude Code skill
 ```
+
+Built with [incur](https://github.com/wevm/incur).
 
 ## License
 
