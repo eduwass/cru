@@ -2,7 +2,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { homedir } from 'node:os'
 
-export const CONFIG_NAME = '.agent-teams.json'
+export const CONFIG_NAME = '.cru.json'
 
 export const DEFAULTS = {
   layout: {
@@ -14,7 +14,7 @@ export const DEFAULTS = {
 export function configPaths() {
   return [
     join(process.cwd(), CONFIG_NAME),
-    join(homedir(), '.config', 'agent-teams', 'config.json'),
+    join(homedir(), '.config', 'cru', 'config.json'),
   ]
 }
 

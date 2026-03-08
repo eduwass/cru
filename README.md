@@ -1,4 +1,6 @@
-# agent-teams
+<p align="center"><img src="assets/logo.svg" width="96"/></p>
+
+# cru
 
 CLI for managing tmux layouts when running Claude Code agent teams. Lead pane on one side, workers in an auto-sized grid on the other.
 
@@ -14,31 +16,46 @@ Built with [incur](https://github.com/wevm/incur).
 
 ```bash
 bun install
-bun run setup   # symlinks skills to .claude/skills/
 ```
 
 ## Quick start
 
 ```bash
-# Apply grid layout to an active team
-bun src/cli.js grid my-team
+# Spawn 4 workers for a team
+cru spawn my-team -n 4
+
+# Re-apply grid layout
+cru grid my-team
 
 # With overrides
-bun src/cli.js grid my-team --lead-size 30 --lead-position right
+cru grid my-team --lead-size 30 --lead-position right
 ```
 
 ## Commands
+
+### `spawn <team>`
+
+Spawn worker agents in tmux panes and apply grid layout.
+
+```bash
+cru spawn my-team -n 4
+cru spawn my-team -n 6 --lead-size 30
+```
+
+### `kill <team>`
+
+Kill all worker panes for a team.
 
 ### `grid <team>`
 
 Apply the grid layout to a team's tmux window.
 
 ```bash
-agent-teams grid my-team
-agent-teams grid my-team --lead-position right
-agent-teams grid my-team --lead-size 50
-agent-teams grid my-team --fill column
-agent-teams grid my-team --max-cols 3
+cru grid my-team
+cru grid my-team --lead-position right
+cru grid my-team --lead-size 50
+cru grid my-team --fill column
+cru grid my-team --max-cols 3
 ```
 
 | Flag | Description |
@@ -63,16 +80,15 @@ Show the resolved config (defaults merged with your overrides).
 
 ### `init`
 
-Generate a config file with defaults.
+Set up cru in the current project.
 
 ```bash
-agent-teams init            # creates .agent-teams.json in current directory
-agent-teams init --global   # creates ~/.config/agent-teams/config.json
+cru init            # creates .cru.json + installs skills
 ```
 
 ## Configuration
 
-Create `.agent-teams.json` in your project (or `~/.config/agent-teams/config.json` globally):
+Create `.cru.json` in your project (or `~/.config/cru/config.json` globally):
 
 ```json
 {
@@ -108,8 +124,8 @@ Create `.agent-teams.json` in your project (or `~/.config/agent-teams/config.jso
 ### Resolution order
 
 1. CLI flags (`--lead-size`, `--fill`, etc.)
-2. Project config (`.agent-teams.json` in cwd)
-3. Global config (`~/.config/agent-teams/config.json`)
+2. Project config (`.cru.json` in cwd)
+3. Global config (`~/.config/cru/config.json`)
 4. Built-in defaults
 
 ### Examples
@@ -144,7 +160,7 @@ Create `.agent-teams.json` in your project (or `~/.config/agent-teams/config.jso
 
 ## Skills
 
-The `/spawn-team` skill lives in `skills/spawn-team/` and is symlinked to `.claude/skills/` via `bun run setup`.
+The `/spawn-team` skill lives in `skills/spawn-team/` and is copied to `.claude/skills/` via `cru init`.
 
 ```
 /spawn-team 4 build a REST API
@@ -157,30 +173,36 @@ It creates a team, spawns N worker agents, and applies the grid layout automatic
 All commands support incur's output formats:
 
 ```bash
-agent-teams grid my-team --json
-agent-teams list --format yaml
-agent-teams status my-team --format md
+cru grid my-team --json
+cru list --format yaml
+cru status my-team --format md
 ```
 
 ## Project structure
 
 ```
 src/
-├── cli.js              # Entrypoint — wires commands to incur
+├── cli.ts                        # Entrypoint
 ├── commands/
-│   ├── config.js       # Show resolved config
-│   ├── grid.js         # Apply tmux grid layout
-│   ├── init.js         # Generate config file
-│   ├── list.js         # List teams
-│   └── status.js       # Show team status
+│   ├── init.ts                   # Set up cru in a project
+│   ├── orchestration/
+│   │   ├── spawn.ts              # Spawn worker agents
+│   │   ├── kill.ts               # Kill worker panes
+│   │   ├── status.ts             # Show team status
+│   │   └── list.ts               # List teams
+│   └── layout/
+│       ├── grid.ts               # Apply tmux grid layout
+│       └── config.ts             # Show resolved config
 └── lib/
-    ├── config.js       # Config loading & merging
-    ├── layout.js       # Grid math & tmux layout strings
-    ├── teams.js        # Read Claude Code team configs
-    └── tmux.js         # Tmux command helpers
+    ├── config.ts                 # Config loading & merging
+    ├── layout.ts                 # Grid math & tmux layout strings
+    ├── preflight.ts              # Prerequisite checks
+    ├── spawn.ts                  # Worker spawning logic
+    ├── teams.ts                  # Read Claude Code team configs
+    └── tmux.ts                   # Tmux command helpers
 
 skills/
-└── spawn-team/SKILL.md # Skill source (symlinked to .claude/skills/)
+└── spawn-team/SKILL.md           # Claude Code skill
 ```
 
 ## License

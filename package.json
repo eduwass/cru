@@ -1,10 +1,10 @@
 {
-  "name": "agent-teams",
+  "name": "cru-cli",
   "version": "1.0.0",
   "description": "Manage tmux layouts for Claude Code agent teams",
   "type": "module",
   "bin": {
-    "agent-teams": "./src/cli.ts"
+    "cru": "./src/cli.ts"
   },
   "files": [
     "src/",
@@ -15,7 +15,7 @@
   },
   "keywords": [
     "claude-code",
-    "agent-teams",
+    "cru",
     "tmux",
     "layout"
   ],

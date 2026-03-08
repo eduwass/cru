@@ -4,7 +4,7 @@ import { join, dirname } from 'node:path'
 import { CONFIG_NAME, DEFAULTS, writeConfig } from '@/lib/config'
 
 export const init = {
-  description: 'Set up agent-teams in the current project',
+  description: 'Set up cru in the current project',
   options: z.object({
     force: z.boolean().default(false).describe('Overwrite existing files'),
   }),
@@ -39,8 +39,8 @@ export const init = {
       done: true,
       files: results,
       next_steps: [
-        'agent-teams spawn <team> -n 4  — spawn workers',
-        'agent-teams grid <team>        — re-apply layout',
+        'cru spawn <team> -n 4  — spawn workers',
+        'cru grid <team>        — re-apply layout',
         '/spawn-team 4 <task>           — via Claude Code skill',
       ],
     }
