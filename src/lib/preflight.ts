@@ -20,25 +20,16 @@ function inTmux() {
 }
 
 /**
- * Get tmux version string, or null if not installed.
+ * Detect terminal emulator from environment.
  */
-function tmuxVersion() {
-  try {
-    return execSync('tmux -V', { encoding: 'utf-8' }).trim()
-  } catch {
-    return null
-  }
-}
-
-/**
- * Get claude CLI version, or null if not installed.
- */
-function claudeVersion() {
-  try {
-    return execSync('claude --version', { encoding: 'utf-8' }).trim()
-  } catch {
-    return null
-  }
+function detectTerminal(): string {
+  if (process.env.ITERM_SESSION_ID) return 'iterm2'
+  if (process.env.TERM_PROGRAM === 'iTerm.app') return 'iterm2'
+  if (process.env.TERM_PROGRAM === 'Apple_Terminal') return 'terminal'
+  if (process.env.TERM_PROGRAM === 'WezTerm') return 'wezterm'
+  if (process.env.TERM_PROGRAM === 'Alacritty') return 'alacritty'
+  if (process.env.WT_SESSION) return 'windows-terminal'
+  return process.env.TERM_PROGRAM || 'unknown'
 }
 
 const INSTALL_HINTS = {
@@ -62,12 +53,14 @@ function platformHint(tool) {
 }
 
 /**
- * Run preflight checks. Returns { ok, errors } where errors is an array
+ * Run preflight checks. Returns { ok, errors, terminal } where errors is an array
  * of { check, message, hint } objects.
  *
  * Checks available: 'tmux', 'tmux-session', 'claude'
  */
 export function preflight(...checks) {
+  const terminal = detectTerminal()
+  const tmuxCmd = terminal === 'iterm2' ? 'tmux -CC' : 'tmux'
   const errors = []
 
   for (const check of checks) {
@@ -93,7 +86,7 @@ export function preflight(...checks) {
           errors.push({
             check: 'tmux-session',
             message: 'Not inside a tmux session',
-            hint: 'Start one with: tmux new -s main',
+            hint: tmuxCmd,
           })
         }
         break
@@ -110,7 +103,7 @@ export function preflight(...checks) {
     }
   }
 
-  return { ok: errors.length === 0, errors }
+  return { ok: errors.length === 0, errors, terminal }
 }
 
 /**

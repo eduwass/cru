@@ -18,11 +18,15 @@ Parse `$ARGUMENTS` as a single string:
 
 1. **Determine worker count and task** from `$ARGUMENTS` using the rules above.
 
-2. **Run environment check:**
+2. **Create the team** using TeamCreate.
+
+3. **Spawn + layout in one shot:**
    ```bash
-   bun src/cli.js doctor --json
+   bun src/cli.js spawn <team-name> --workers <count>
    ```
-   If `"ok": false` → **STOP immediately.** Do NOT create a team or try workarounds.
+   This splits tmux panes, starts `claude` in each, and applies the grid layout.
+
+   The spawn command runs environment checks internally. If it returns `"error": "Preflight checks failed"`, **STOP immediately.** Do NOT try workarounds.
 
    Tell the user what failed. Be brief — problem and fix, nothing else. Example for missing tmux session:
 
@@ -32,19 +36,11 @@ Parse `$ARGUMENTS` as a single string:
    >
    > Then pick up where you left off with `claude --continue` and re-run `/cru`.
 
-   Then **stop**. Do not proceed.
+   Use the `fix` value from the error response as the command to show the user. Then **stop**.
 
-3. **Create the team** using TeamCreate.
+4. **Send the task** to each worker using SendMessage with their agent IDs, giving each worker its specific slice of the task.
 
-4. **Spawn + layout in one shot:**
-   ```bash
-   bun src/cli.js spawn <team-name> --workers <count>
-   ```
-   This splits tmux panes, starts `claude` in each, and applies the grid layout.
-
-5. **Send the task** to each worker using SendMessage with their agent IDs, giving each worker its specific slice of the task.
-
-6. **Report** the team is ready.
+5. **Report** the team is ready.
 
 ## Shutdown
 
