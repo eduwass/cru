@@ -22,9 +22,11 @@ Lead pane on one side, workers in an auto-sized grid on the other.
 
 ```bash
 npm install -g cru-cli
-# or
+```
+```bash
 pnpm add -g cru-cli
-# or
+```
+```bash
 bun add -g cru-cli
 ```
 
