@@ -20,6 +20,8 @@ Lead pane on one side, workers in an auto-sized grid on the other.
 
 ## Install
 
+Install with your package manager of choice:
+
 ```bash
 npm install -g cru-cli
 ```
