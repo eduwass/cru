@@ -55,17 +55,21 @@ That's it — cru creates the tmux panes, applies the grid layout, and your work
 ## Use cases
 
 - **[Parallel feature work](https://code.claude.com/docs/en/agent-teams#when-to-use-agent-teams)** — split subtasks across workers, merge when done
+
   ```
   /cru break down the checkout flow into vertical slices, one worker per slice
   ```
 - **[Review crew](https://code.claude.com/docs/en/agent-teams#run-a-parallel-code-review)** — workers build, one reviews
+
   ```
   /cru 3 review PR #142 — one on security, one on performance, one on test coverage
   ```
 - **[Competing hypotheses](https://code.claude.com/docs/en/agent-teams#investigate-with-competing-hypotheses)** — debug faster with multiple theories at once
+
   ```
   /cru users report the app crashes on login — each worker investigates a different theory
   ```
+  
 - **[Research spike](https://code.claude.com/docs/en/agent-teams#start-with-research-and-review)** — explore different approaches simultaneously
   ```
   /cru 3 evaluate auth libraries — one on passport, one on lucia, one on arctic
