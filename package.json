@@ -7,7 +7,7 @@
     "agent-teams": "./src/cli.js"
   },
   "scripts": {
-    "dev": "node src/cli.js"
+    "dev": "bun src/cli.js"
   },
   "keywords": [],
   "author": "",

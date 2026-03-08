@@ -13,17 +13,17 @@ Built with [incur](https://github.com/wevm/incur).
 ## Install
 
 ```bash
-npm install
+bun install
 ```
 
 ## Quick start
 
 ```bash
 # Apply grid layout to an active team
-node src/cli.js grid my-team
+bun src/cli.js grid my-team
 
 # With overrides
-node src/cli.js grid my-team --lead-size 30 --lead-position right
+bun src/cli.js grid my-team --lead-size 30 --lead-position right
 ```
 
 ## Commands

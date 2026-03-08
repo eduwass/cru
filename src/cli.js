@@ -1,4 +1,4 @@
-#!/usr/bin/env node
+#!/usr/bin/env bun
 import { Cli } from 'incur'
 import { init } from './commands/init.js'
 import { config } from './commands/config.js'
