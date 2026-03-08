@@ -37,7 +37,7 @@ export function writeConfig(path, config) {
   writeFileSync(path, JSON.stringify(config, null, 2) + '\n')
 }
 
-function deepMerge(target, source) {
+export function deepMerge(target, source) {
   for (const key of Object.keys(source)) {
     if (
       source[key] &&

@@ -31,7 +31,7 @@ export function spawnWorkers(leadPane, { teamName, parentSessionId, workers, cwd
   return panes
 }
 
-function buildClaudeCmd({ name, teamName, color, parentSessionId, cwd }) {
+export function buildClaudeCmd({ name, teamName, color, parentSessionId, cwd }) {
   const parts = []
   if (cwd) parts.push(`cd ${JSON.stringify(cwd)} &&`)
   parts.push('claude')
