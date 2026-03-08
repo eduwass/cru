@@ -20,7 +20,7 @@ Layout for [Claude Code agent teams](https://code.claude.com/docs/en/agent-teams
 
 - **Already using tmux?** You're good.
 - **iTerm2?** Use [`tmux -CC`](https://iterm2.com/documentation-tmux-integration.html) for native pane integration.
-- **Ghostty?** Not yet — [pane support is in the works](https://github.com/ghostty-org/ghostty).
+- **Ghostty?** tmux works fine inside it. Native pane integration (like iTerm2's `tmux -CC`) isn't supported yet, but [AppleScript support is coming](https://github.com/ghostty-org/ghostty/pull/11208).
 
 ## Install
 
