@@ -371,5 +371,5 @@ export async function isRunningClaude(pane: Pane): Promise<boolean> {
  * Close a cru team. Silently ignores errors if team doesn't exist.
  */
 export async function closeTeam(teamName: string): Promise<void> {
-  await $`bun src/cli.ts close ${teamName}`.nothrow().quiet()
+  await $`bun src/cli.ts panes close ${teamName}`.nothrow().quiet()
 }

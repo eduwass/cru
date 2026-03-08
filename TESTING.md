@@ -58,7 +58,7 @@ Run with `bun run test:e2e` (requires tmux + iTerm2 + it2 + Claude Code).
 
 - [x] `tests/e2e/helpers.ts` — shared utilities (poll, waitForPanes, getScreen, sendText, etc.)
 - [x] `tests/e2e/explicit-count.test.ts` — tests with explicit worker count
-- [x] `tests/e2e/no-tmux.test.ts` — preflight error when not in tmux
+- [ ] ~~`tests/e2e/no-tmux.test.ts`~~ — removed (spawn command removed)
 - [x] Polling with timeout via `poll()` helper — no arbitrary sleeps
 - [x] Cleanup in `afterAll` via `closeTeam()`
 - [x] `bun run test:e2e` script in package.json (120s timeout)
@@ -81,13 +81,7 @@ Key commands used in the harness:
 |------|----------|-----------|
 | `/cru 3 say hi` | 3 workers | pane count = 4, workers loaded, tasks sent |
 
-**No tmux** (`tests/e2e/no-tmux.test.ts`):
-
-| Scenario | Expected | Assertion |
-|----------|----------|-----------|
-| `spawn` outside tmux | preflight error | error message, fix hint present |
-| `spawn` outside tmux in iTerm2 | `tmux -CC` hint | fix = `tmux -CC` |
-| `spawn` outside tmux in other terminal | `tmux` hint | fix = `tmux`, no `-CC` |
+**No tmux** — removed (spawn command removed in entity-based restructure).
 
 ### Not yet implemented
 

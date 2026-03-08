@@ -33,7 +33,7 @@ Parse `$ARGUMENTS` as a single string:
 
 4. **Apply grid layout** after spawning:
    ```bash
-   cru grid --expect <worker-count>
+   cru panes grid --expect <worker-count>
    ```
    This waits for worker panes to appear in tmux, then arranges them in a grid (lead on one side, workers in an auto-sized grid on the other).
 
@@ -41,12 +41,12 @@ Parse `$ARGUMENTS` as a single string:
 
 5. **Report** the team is ready. Tell the user:
    - What each worker is focused on
-   - `cru close <team-name>` to shut down when done
+   - `cru panes close <team-name>` to shut down when done
 
 ## Shutdown
 
 ```bash
-cru close <team-name>
+cru panes close <team-name>
 ```
 
 Team data (logs, messages) is preserved after close — reviewable via `cru logs <team>`. Use `cru clean` to remove old teams.

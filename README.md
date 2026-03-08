@@ -81,31 +81,31 @@ The `/cru` skill is installed to `.claude/skills/` via `cru init`. It handles te
 
 ## CLI
 
-For granular control or custom scripting, cru exposes the full CLI. Note that you can run these directly from Claude Code by prefixing with `!`.
+For granular control or custom scripting, cru exposes the full CLI. Run these directly from Claude Code by prefixing with `!`.
 
-### `spawn <team>`
+### `teams [team]`
 
-Spawn worker agents in tmux panes and apply grid layout.
+List all teams or show detail for a specific team.
 
 ```bash
-cru spawn my-team -n 4
-cru spawn my-team -n 6 --lead-size 30
+cru teams                  # list active teams
+cru teams --all            # include dead teams
+cru teams my-team          # show members and pane assignments
 ```
 
-### `close <team>`
+### `panes <action> [team]`
 
-Close all worker panes for a team.
-
-### `grid <team>`
-
-Apply the grid layout to a team's tmux window.
+Manage tmux panes — list, apply grid layout, or close workers.
 
 ```bash
-cru grid my-team
-cru grid my-team --lead-position right
-cru grid my-team --lead-size 50
-cru grid my-team --fill column
-cru grid my-team --max-cols 3
+cru panes list                              # list panes in current window
+cru panes list my-team                      # list panes for a team
+cru panes grid my-team                      # apply grid layout
+cru panes grid my-team --lead-position right
+cru panes grid my-team --lead-size 50
+cru panes grid my-team --fill column
+cru panes grid my-team --max-cols 3
+cru panes close my-team                     # close all worker panes
 ```
 
 | Flag | Description |
@@ -115,14 +115,17 @@ cru grid my-team --max-cols 3
 | `--fill <dir>` | Grid fill direction: `row` \| `column` (default: `row`) |
 | `--max-cols <n>` | Cap the number of grid columns |
 | `--max-rows <n>` | Cap the number of grid rows |
+| `--expect <n>` | Wait for N worker panes before applying layout |
 
-### `list`
+### `tasks [team]`
 
-List all teams.
+List tasks for a team or all teams.
 
-### `status <team>`
-
-Show team members and pane assignments.
+```bash
+cru tasks                          # tasks from all teams
+cru tasks my-team                  # tasks for a specific team
+cru tasks --status in_progress     # filter by status
+```
 
 ### `logs [team]`
 
@@ -245,9 +248,9 @@ Create `.cru.json` in your project (or `~/.config/cru/config.json` globally):
 All commands support incur's output formats:
 
 ```bash
-cru grid my-team --json
-cru list --format yaml
-cru status my-team --format md
+cru panes grid my-team --json
+cru teams --format yaml
+cru teams my-team --format md
 ```
 
 ## Project structure
@@ -256,24 +259,19 @@ cru status my-team --format md
 src/
 ├── cli.ts                        # Entrypoint
 ├── commands/
+│   ├── teams.ts                  # List teams / show team detail
+│   ├── panes.ts                  # List, grid layout, close panes
+│   ├── tasks.ts                  # List tasks
+│   ├── config.ts                 # Show resolved config
 │   ├── doctor.ts                 # Environment diagnostics
 │   ├── init.ts                   # Set up cru in a project
 │   ├── clean.ts                  # Remove old team data
-│   ├── logs.ts                   # Team activity log
-│   ├── orchestration/
-│   │   ├── spawn.ts              # Spawn worker agents
-│   │   ├── close.ts              # Close worker panes
-│   │   ├── status.ts             # Show team status
-│   │   └── list.ts               # List teams
-│   └── layout/
-│       ├── grid.ts               # Apply tmux grid layout
-│       └── config.ts             # Show resolved config
+│   └── logs.ts                   # Team activity log
 └── lib/
     ├── config.ts                 # Config loading & merging
     ├── env.ts                    # Environment detection utilities
     ├── layout.ts                 # Grid math & tmux layout strings
     ├── preflight.ts              # Prerequisite checks
-    ├── spawn.ts                  # Worker spawning logic
     ├── panes.ts                  # Pane tracking (cru-panes.json)
     ├── teams.ts                  # Read Claude Code team configs
     └── tmux.ts                   # Tmux command helpers

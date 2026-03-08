@@ -5,11 +5,11 @@
  *   1. Create team of 4 workers via /cru skill
  *   2. Verify team bar shows workers
  *   3. Verify 2x2 grid layout
- *   4. cru status / cru list show correct info
+ *   4. cru teams shows correct info
  *   5. cru logs captures activity with colors
  *   6. Change layout (lead position to right)
  *   7. Close team, verify cleanup
- *   8. cru list no longer shows team as active
+ *   8. cru teams no longer shows team as active
  *
  * Run: bun test tests/e2e/full-workflow.test.ts --timeout 600000
  */
@@ -111,7 +111,7 @@ describe('/cru full workflow', () => {
   test(
     '3. workers arranged in 2x2 grid with lead on left',
     async () => {
-      // Poll until grid layout is applied (lead finishes running `cru grid`)
+      // Poll until grid layout is applied (lead finishes running `cru panes grid`)
       // Workers should have >1 distinct left value once arranged in a 2x2 grid
       const panes = await poll(
         async () => {
@@ -165,24 +165,24 @@ describe('/cru full workflow', () => {
   )
 
   // -------------------------------------------------------------------------
-  // Step 4: CLI commands (status, list, config)
+  // Step 4: CLI commands (teams, config)
   // -------------------------------------------------------------------------
 
   test(
-    '4a. cru list shows the team as active',
+    '4a. cru teams shows the team as active',
     async () => {
-      const output = await $`bun src/cli.ts list`.nothrow().text()
+      const output = await $`bun src/cli.ts teams`.nothrow().text()
       expect(output).toContain(teamName!)
 
-      await saveLogs('4a-list', env.runDir, teamName ?? undefined)
+      await saveLogs('4a-teams', env.runDir, teamName ?? undefined)
     },
     TIMEOUT,
   )
 
   test(
-    '4b. cru status shows team members',
+    '4b. cru teams <name> shows team members',
     async () => {
-      const output = await $`bun src/cli.ts status ${teamName}`.nothrow().text()
+      const output = await $`bun src/cli.ts teams ${teamName}`.nothrow().text()
 
       // Should show team name
       expect(output).toContain(teamName!)
@@ -255,12 +255,12 @@ describe('/cru full workflow', () => {
   // -------------------------------------------------------------------------
 
   test(
-    '6. cru grid --lead-position right moves lead to right side',
+    '6. cru panes grid --lead-position right moves lead to right side',
     async () => {
       await saveDebugSnapshot(env.tmuxWindow, '6a-before-layout-change', env.runDir)
 
       // Run grid with lead on right using team name for pane identification
-      const result = await $`bun src/cli.ts grid ${teamName} --lead-position right`
+      const result = await $`bun src/cli.ts panes grid ${teamName} --lead-position right`
         .nothrow()
         .text()
       console.log(`  grid result: ${result.replace(/\n/g, ' ').trim().slice(0, 200)}`)
@@ -298,9 +298,9 @@ describe('/cru full workflow', () => {
   // -------------------------------------------------------------------------
 
   test(
-    '7. cru close removes all worker panes',
+    '7. cru panes close removes all worker panes',
     async () => {
-      await $`bun src/cli.ts close ${teamName}`.nothrow()
+      await $`bun src/cli.ts panes close ${teamName}`.nothrow()
 
       // Wait for only lead pane to remain
       const panes = await env.waitForPaneCount(1, 30_000)
@@ -317,9 +317,9 @@ describe('/cru full workflow', () => {
   // -------------------------------------------------------------------------
 
   test(
-    '8. cru list no longer shows team as active after close',
+    '8. cru teams no longer shows team as active after close',
     async () => {
-      const output = await $`bun src/cli.ts list`.nothrow().text()
+      const output = await $`bun src/cli.ts teams`.nothrow().text()
       const clean = output.replace(/\x1b\[[0-9;]*m/g, '')
 
       // Team should either not appear or show as inactive (no live panes)
