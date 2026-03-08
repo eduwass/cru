@@ -1,5 +1,13 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 32" fill="currentColor">
-  <rect x="0" y="0" width="48" height="32" rx="4" opacity="0.1"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 32">
+  <style>
+    rect { fill: #1a1a1a; }
+    .bg { fill: #1a1a1a; opacity: 0.1; }
+    @media (prefers-color-scheme: dark) {
+      rect { fill: #e5e5e5; }
+      .bg { fill: #e5e5e5; opacity: 0.1; }
+    }
+  </style>
+  <rect class="bg" x="0" y="0" width="48" height="32" rx="4"/>
   <rect x="2" y="2" width="20" height="28" rx="2"/>
   <rect x="24" y="2" width="10" height="13" rx="2"/>
   <rect x="36" y="2" width="10" height="13" rx="2"/>
