@@ -1,15 +1,16 @@
 import { z } from 'incur'
-import { readTeamConfig } from '@/lib/teams'
+import { readTeamConfig, findTeamForCurrentWindow } from '@/lib/teams'
 import { killPane } from '@/lib/tmux'
 import { loadPanes } from '@/lib/panes'
 
 export const kill = {
   description: 'Kill all worker panes for a team',
   args: z.object({
-    team: z.string().describe('Team name'),
+    team: z.string().optional().describe('Team name (auto-detects from current window if omitted)'),
   }),
   run(c) {
-    const teamName = c.args.team
+    const teamName = c.args.team || findTeamForCurrentWindow()
+    if (!teamName) return c.error({ code: 'NO_TEAM', message: 'No team specified and none found in current window' })
     const killed: Array<{ name: string; pane: string }> = []
 
     // Primary: use cru's own pane tracking

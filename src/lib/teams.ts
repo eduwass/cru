@@ -29,6 +29,17 @@ export function listTeams() {
   }
 }
 
+/** Find which team owns the current tmux window. */
+export function findTeamForCurrentWindow(): string | null {
+  const { paneWindow, currentPane } = require('./tmux')
+  const windowId = paneWindow(currentPane())
+  for (const name of listTeams()) {
+    const panes = loadPanes(name)
+    if (panes?.windowId === windowId) return name
+  }
+  return null
+}
+
 export function findTeamWindow(teamName) {
   // Primary: cru's own pane tracking
   const cruPanes = loadPanes(teamName)
