@@ -12,7 +12,7 @@
   ],
   "scripts": {
     "dev": "bun src/cli.ts",
-    "test": "bun test src/",
+    "test": "bun test tests/unit/",
     "test:e2e": "bun test tests/e2e/ --timeout 120000"
   },
   "keywords": [

@@ -1,5 +1,5 @@
 import { describe, test, expect } from 'bun:test'
-import { computeGrid, buildLayout } from './layout'
+import { computeGrid, buildLayout } from '@/lib/layout'
 
 const conf = (overrides = {}) => ({
   lead: { position: 'left', size: 40 },

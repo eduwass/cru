@@ -1,5 +1,5 @@
 import { describe, test, expect } from 'bun:test'
-import { deepMerge, DEFAULTS } from './config'
+import { deepMerge, DEFAULTS } from '@/lib/config'
 
 describe('deepMerge', () => {
   test('merges flat objects', () => {

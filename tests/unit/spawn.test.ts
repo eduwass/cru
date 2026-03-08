@@ -1,5 +1,5 @@
 import { describe, test, expect, mock } from 'bun:test'
-import { buildClaudeCmd } from './spawn'
+import { buildClaudeCmd } from '@/lib/spawn'
 
 const COLORS = ['blue', 'green', 'yellow', 'red', 'magenta', 'cyan']
 
