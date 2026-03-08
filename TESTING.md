@@ -60,7 +60,7 @@ Run with `bun run test:e2e` (requires tmux + iTerm2 + it2 + Claude Code).
 - [x] `tests/e2e/explicit-count.test.ts` — tests with explicit worker count
 - [x] `tests/e2e/no-tmux.test.ts` — preflight error when not in tmux
 - [x] Polling with timeout via `poll()` helper — no arbitrary sleeps
-- [x] Cleanup in `afterAll` via `killTeam()`
+- [x] Cleanup in `afterAll` via `closeTeam()`
 - [x] `bun run test:e2e` script in package.json (120s timeout)
 
 ### it2 integration

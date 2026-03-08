@@ -92,9 +92,9 @@ cru spawn my-team -n 4
 cru spawn my-team -n 6 --lead-size 30
 ```
 
-### `kill <team>`
+### `close <team>`
 
-Kill all worker panes for a team.
+Close all worker panes for a team.
 
 ### `grid <team>`
 
@@ -262,7 +262,7 @@ src/
 │   ├── logs.ts                   # Team activity log
 │   ├── orchestration/
 │   │   ├── spawn.ts              # Spawn worker agents
-│   │   ├── kill.ts               # Kill worker panes
+│   │   ├── close.ts              # Close worker panes
 │   │   ├── status.ts             # Show team status
 │   │   └── list.ts               # List teams
 │   └── layout/

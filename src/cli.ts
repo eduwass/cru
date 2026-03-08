@@ -4,7 +4,7 @@ import { preflight } from '@/lib/preflight'
 
 // Orchestration
 import { spawn } from '@/commands/orchestration/spawn'
-import { kill } from '@/commands/orchestration/kill'
+import { close } from '@/commands/orchestration/close'
 import { status } from '@/commands/orchestration/status'
 import { list } from '@/commands/orchestration/list'
 
@@ -21,7 +21,7 @@ import { clean } from '@/commands/clean'
 // Commands that require specific preflight checks
 const PREFLIGHT: Record<string, string[]> = {
   spawn: ['terminal', 'tmux-session', 'claude'],
-  kill: ['tmux'],
+  close: ['tmux'],
   grid: ['tmux-session'],
 }
 
@@ -42,7 +42,7 @@ Cli.create('cru', {
   })
   // Orchestration
   .command('spawn', spawn)
-  .command('kill', kill)
+  .command('close', close)
   .command('status', status)
   .command('list', list)
   // Layout

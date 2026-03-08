@@ -3,8 +3,8 @@ import { readTeamConfig, findTeamForCurrentWindow } from '@/lib/teams'
 import { killPane, currentPane, paneWindow, listWindowPanes } from '@/lib/tmux'
 import { loadPanes } from '@/lib/panes'
 
-export const kill = {
-  description: 'Kill all worker panes for a team',
+export const close = {
+  description: 'Close all worker panes for a team',
   args: z.object({
     team: z.string().optional().describe('Team name (auto-detects from current window if omitted)'),
   }),
@@ -50,6 +50,6 @@ export const kill = {
     // Team data (config.json, inboxes/, cru-panes.json) is preserved
     // for post-mortem review via `cru logs`. Use `cru clean` to remove.
 
-    return { team: teamName, killed: killed.length, panes: killed }
+    return { team: teamName, closed: killed.length, panes: killed }
   },
 }

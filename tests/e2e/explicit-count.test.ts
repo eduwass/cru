@@ -26,8 +26,8 @@ describe('/cru with explicit count', () => {
 
       // Kill worker panes via cru
       if (teamName) {
-        await $`bun src/cli.ts kill ${teamName}`.nothrow().quiet()
-        console.log(`  [cleanup] killed team ${teamName}`)
+        await $`bun src/cli.ts close ${teamName}`.nothrow().quiet()
+        console.log(`  [cleanup] closed team ${teamName}`)
       }
 
       await env.teardown()

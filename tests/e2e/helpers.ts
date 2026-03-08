@@ -368,8 +368,8 @@ export async function isRunningClaude(pane: Pane): Promise<boolean> {
 // ---------------------------------------------------------------------------
 
 /**
- * Kill a cru team. Silently ignores errors if team doesn't exist.
+ * Close a cru team. Silently ignores errors if team doesn't exist.
  */
-export async function killTeam(teamName: string): Promise<void> {
-  await $`bun src/cli.ts kill ${teamName}`.nothrow().quiet()
+export async function closeTeam(teamName: string): Promise<void> {
+  await $`bun src/cli.ts close ${teamName}`.nothrow().quiet()
 }

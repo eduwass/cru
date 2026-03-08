@@ -41,12 +41,12 @@ Parse `$ARGUMENTS` as a single string:
 
 5. **Report** the team is ready. Tell the user:
    - What each worker is focused on
-   - `cru kill <team-name>` to shut down when done
+   - `cru close <team-name>` to shut down when done
 
 ## Shutdown
 
 ```bash
-cru kill <team-name>
+cru close <team-name>
 ```
 
-Team data (logs, messages) is preserved after kill — reviewable via `cru logs <team>`. Use `cru clean` to remove old teams.
+Team data (logs, messages) is preserved after close — reviewable via `cru logs <team>`. Use `cru clean` to remove old teams.
