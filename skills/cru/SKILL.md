@@ -20,32 +20,27 @@ Parse `$ARGUMENTS` as a single string:
 
 2. **Create the team** using TeamCreate.
 
-3. **Spawn + layout in one shot:**
+3. **Spawn workers** using the Agent tool. For each worker (worker-1 through worker-N):
+   - Set `team_name` to the team name from step 2
+   - Set `name` to "worker-1", "worker-2", etc.
+   - Set `subagent_type` to "general-purpose"
+   - Set `run_in_background` to true
+   - Give each worker its specific task slice in the `prompt`, plus:
+     - Context about what other workers are doing
+     - An instruction to message teammates to share findings and discuss
+
+   Spawn all workers in a single message (parallel Agent calls).
+
+4. **Apply grid layout** after spawning:
    ```bash
-   cru spawn <team-name> -n <count>
+   cru grid --expect <worker-count>
    ```
-   This splits tmux panes, starts `claude` in each, and applies the grid layout.
+   This waits for worker panes to appear in tmux, then arranges them in a grid (lead on one side, workers in an auto-sized grid on the other).
 
-   The spawn command runs environment checks internally. If it returns `"error": "Preflight checks failed"`, **STOP immediately.** Do NOT try workarounds.
-
-   Tell the user what failed. Be brief — problem and fix, nothing else. Example for missing tmux session:
-
-   > **cru needs tmux.** Start a tmux session first:
-   >
-   > `tmux -CC`
-   >
-   > Then pick up where you left off with `claude --continue` and re-run `/cru`.
-
-   Use the `fix` value from the error response as the command to show the user. Then **stop**.
-
-4. **Send the task** to each worker using SendMessage with their agent IDs. Give each worker:
-   - Its specific slice of the task
-   - Context about what the other workers are doing
-   - An explicit instruction to message teammates to share findings and discuss (workers won't do this spontaneously)
+   If the grid command fails (e.g., not in a tmux session), that's OK — workers still run as background agents with the team bar visible. Tell the user they can start a tmux session for the grid layout.
 
 5. **Report** the team is ready. Tell the user:
    - What each worker is focused on
-   - `cru logs -f` to watch the team's activity live
    - `cru kill <team-name>` to shut down when done
 
 ## Shutdown

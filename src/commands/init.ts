@@ -26,14 +26,9 @@ export const init = {
     const skillSrc = join(pkgRoot, 'skills', 'cru')
     const skillDest = join(cwd, '.claude', 'skills', 'cru')
 
-    const skillExists = existsSync(join(skillDest, 'SKILL.md'))
-    if (!skillExists || c.options.force) {
-      mkdirSync(join(cwd, '.claude', 'skills'), { recursive: true })
-      cpSync(skillSrc, skillDest, { recursive: true })
-      files['.claude/skills/cru/'] = 'installed'
-    } else {
-      files['.claude/skills/cru/'] = 'exists'
-    }
+    mkdirSync(join(cwd, '.claude', 'skills'), { recursive: true })
+    cpSync(skillSrc, skillDest, { recursive: true })
+    files['.claude/skills/cru/'] = existsSync(join(skillDest, 'SKILL.md')) ? 'updated' : 'installed'
 
     return { files, tip: 'Use /cru in Claude Code to spawn a team.' }
   },

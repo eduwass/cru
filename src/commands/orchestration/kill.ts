@@ -1,6 +1,6 @@
 import { z } from 'incur'
 import { readTeamConfig, findTeamForCurrentWindow } from '@/lib/teams'
-import { killPane } from '@/lib/tmux'
+import { killPane, currentPane, paneWindow, listWindowPanes } from '@/lib/tmux'
 import { loadPanes } from '@/lib/panes'
 
 export const kill = {
@@ -28,6 +28,21 @@ export const kill = {
         for (const member of workers) {
           killPane(member.tmuxPaneId)
           killed.push({ name: member.name, pane: member.tmuxPaneId })
+        }
+      } catch {}
+    }
+
+    // If nothing was killed via tracking, auto-detect: kill all non-lead panes
+    if (killed.length === 0) {
+      try {
+        const lead = currentPane()
+        const windowId = paneWindow(lead)
+        const panes = listWindowPanes(windowId)
+        for (const p of panes) {
+          if (p.id !== lead) {
+            killPane(p.id)
+            killed.push({ name: `pane-${killed.length + 1}`, pane: p.id })
+          }
         }
       } catch {}
     }

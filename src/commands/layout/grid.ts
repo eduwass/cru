@@ -1,14 +1,14 @@
 import { z } from 'incur'
 import { loadConfig } from '@/lib/config'
 import { readTeamConfig, findTeamWindow } from '@/lib/teams'
-import { getWindowDimensions, listWindowPanes, applyLayout } from '@/lib/tmux'
+import { getWindowDimensions, listWindowPanes, applyLayout, currentPane, paneWindow } from '@/lib/tmux'
 import { buildLayout, computeGrid } from '@/lib/layout'
 import { loadPanes } from '@/lib/panes'
 
 export const grid = {
-  description: "Apply grid layout to a team's tmux panes",
+  description: 'Apply grid layout to tmux panes (auto-detects or uses team tracking)',
   args: z.object({
-    team: z.string().describe('Team name'),
+    team: z.string().optional().describe('Team name (omit to auto-detect panes in current window)'),
   }),
   options: z.object({
     'lead-size': z.coerce.number().optional().describe('Override lead size (%)'),
@@ -16,6 +16,7 @@ export const grid = {
     fill: z.enum(['row', 'column']).optional().describe('Override grid fill direction'),
     'max-cols': z.coerce.number().optional().describe('Override max columns'),
     'max-rows': z.coerce.number().optional().describe('Override max rows'),
+    expect: z.coerce.number().optional().describe('Wait until N worker panes appear before applying layout'),
   }),
   run(c) {
     const conf = loadConfig()
@@ -27,30 +28,59 @@ export const grid = {
     if (c.options['max-rows'] != null) conf.layout.grid.maxRows = c.options['max-rows']
 
     const teamName = c.args.team
-
-    // Try cru's pane tracking first, then Claude's config
-    const cruPanes = loadPanes(teamName)
     let windowId: string | null = null
-    let workerPaneIds: Set<string>
+    let leadPaneId: string | null = null
+    let workerPaneIds: Set<string> | null = null
+    let cruPanesData: ReturnType<typeof loadPanes> = null
 
-    if (cruPanes) {
-      windowId = cruPanes.windowId
-      workerPaneIds = new Set(cruPanes.workers.map((w) => w.paneId))
+    if (teamName) {
+      // Team mode: use cru's pane tracking or Claude's config
+      cruPanesData = loadPanes(teamName)
+      if (cruPanesData) {
+        windowId = cruPanesData.windowId
+        workerPaneIds = new Set(cruPanesData.workers.map((w) => w.paneId))
+      } else {
+        windowId = findTeamWindow(teamName)
+        const teamConf = readTeamConfig(teamName)
+        workerPaneIds = new Set(
+          teamConf.members.filter((m) => m.tmuxPaneId).map((m) => m.tmuxPaneId),
+        )
+      }
     } else {
-      windowId = findTeamWindow(teamName)
-      const teamConf = readTeamConfig(teamName)
-      workerPaneIds = new Set(
-        teamConf.members.filter((m) => m.tmuxPaneId).map((m) => m.tmuxPaneId),
-      )
+      // Auto-detect: current pane = lead, everything else = workers
+      leadPaneId = currentPane()
+      windowId = paneWindow(leadPaneId)
     }
 
-    if (!windowId) return c.error({ code: 'NO_WINDOW', message: 'Could not find tmux window for team' })
+    if (!windowId) return c.error({ code: 'NO_WINDOW', message: 'Could not find tmux window' })
+
+    // Wait for expected number of worker panes if --expect is set
+    if (c.options.expect) {
+      const expectedTotal = c.options.expect + 1 // workers + lead
+      const deadline = Date.now() + 30_000
+      while (Date.now() < deadline) {
+        if (listWindowPanes(windowId).length >= expectedTotal) break
+        Bun.sleepSync(500)
+      }
+    }
 
     const { w: W, h: H } = getWindowDimensions(windowId)
     const panes = listWindowPanes(windowId)
 
-    const leadPane = panes.find((p) => !workerPaneIds.has(p.id))
-    const workerPanes = panes.filter((p) => workerPaneIds.has(p.id))
+    if (panes.length < 2) {
+      return c.error({ code: 'NO_WORKERS', message: 'Only one pane in window — nothing to arrange' })
+    }
+
+    let leadPane, workerPanes
+    if (workerPaneIds) {
+      // Team mode: identify by tracked pane IDs
+      leadPane = panes.find((p) => !workerPaneIds.has(p.id))
+      workerPanes = panes.filter((p) => workerPaneIds.has(p.id))
+    } else {
+      // Auto-detect mode: current pane is lead
+      leadPane = panes.find((p) => p.id === leadPaneId)
+      workerPanes = panes.filter((p) => p.id !== leadPaneId)
+    }
 
     if (!leadPane) return c.error({ code: 'NO_LEAD', message: 'Could not identify lead pane' })
     if (workerPanes.length === 0) return c.error({ code: 'NO_WORKERS', message: 'No worker panes found' })
@@ -69,8 +99,8 @@ export const grid = {
       const row = []
       for (let col = 0; col < cols; col++) {
         if (idx < N) {
-          const cruWorker = cruPanes?.workers[idx]
-          row.push(cruWorker?.name || `worker-${idx + 1}`)
+          const cruWorker = cruPanesData?.workers[idx]
+          row.push(cruWorker?.name || `pane-${idx + 1}`)
           idx++
         }
       }
