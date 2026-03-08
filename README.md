@@ -16,6 +16,12 @@ Layout for [Claude Code agent teams](https://code.claude.com/docs/en/agent-teams
 ╰──────────────────┴────────────────┴────────────────╯
 ```
 
+## tmux setup
+
+- **Already using tmux?** You're good.
+- **iTerm2?** Use [`tmux -CC`](https://iterm2.com/documentation-tmux-integration.html) for native pane integration.
+- **Ghostty?** Not yet — [pane support is in the works](https://github.com/ghostty-org/ghostty).
+
 ## Install
 
 Install with your package manager of choice:
