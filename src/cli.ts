@@ -2,17 +2,17 @@
 import { Cli } from 'incur'
 
 // Orchestration
-import { spawn } from './commands/orchestration/spawn.js'
-import { kill } from './commands/orchestration/kill.js'
-import { status } from './commands/orchestration/status.js'
-import { list } from './commands/orchestration/list.js'
+import { spawn } from '@/commands/orchestration/spawn'
+import { kill } from '@/commands/orchestration/kill'
+import { status } from '@/commands/orchestration/status'
+import { list } from '@/commands/orchestration/list'
 
 // Layout
-import { grid } from './commands/layout/grid.js'
-import { config } from './commands/layout/config.js'
+import { grid } from '@/commands/layout/grid'
+import { config } from '@/commands/layout/config'
 
 // Meta
-import { init } from './commands/init.js'
+import { init } from '@/commands/init'
 
 Cli.create('agent-teams', {
   description: 'Manage tmux layouts for Claude Code agent teams',

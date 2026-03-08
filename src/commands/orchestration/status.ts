@@ -1,5 +1,5 @@
 import { z } from 'incur'
-import { readTeamConfig } from '../../lib/teams.js'
+import { readTeamConfig } from '@/lib/teams'
 
 export const status = {
   description: 'Show team members and their pane assignments',

@@ -1,7 +1,7 @@
 import { z } from 'incur'
 import { existsSync, mkdirSync, cpSync } from 'node:fs'
 import { join, dirname } from 'node:path'
-import { CONFIG_NAME, DEFAULTS, writeConfig } from '../lib/config.js'
+import { CONFIG_NAME, DEFAULTS, writeConfig } from '@/lib/config'
 
 export const init = {
   description: 'Set up agent-teams in the current project',

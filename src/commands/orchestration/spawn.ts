@@ -1,9 +1,10 @@
 import { z } from 'incur'
-import { readTeamConfig } from '../../lib/teams.js'
-import { loadConfig } from '../../lib/config.js'
-import { currentPane, paneWindow, getWindowDimensions, listWindowPanes, applyLayout } from '../../lib/tmux.js'
-import { buildLayout, computeGrid } from '../../lib/layout.js'
-import { spawnWorkers } from '../../lib/spawn.js'
+import { guard } from '@/lib/preflight'
+import { readTeamConfig } from '@/lib/teams'
+import { loadConfig } from '@/lib/config'
+import { currentPane, paneWindow, getWindowDimensions, listWindowPanes, applyLayout } from '@/lib/tmux'
+import { buildLayout, computeGrid } from '@/lib/layout'
+import { spawnWorkers } from '@/lib/spawn'
 
 export const spawn = {
   description: 'Spawn worker agents in tmux panes and apply grid layout',
@@ -18,6 +19,9 @@ export const spawn = {
   }),
   alias: { workers: 'n' },
   run(c) {
+    const err = guard('tmux-session', 'claude')
+    if (err) return err
+
     const teamName = c.args.team
     const numWorkers = c.options.workers
     const cwd = c.options.cwd || process.cwd()

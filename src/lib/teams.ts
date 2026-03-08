@@ -1,7 +1,7 @@
 import { readFileSync, readdirSync } from 'node:fs'
 import { join } from 'node:path'
 import { homedir } from 'node:os'
-import { tmux } from './tmux.js'
+import { tmux } from './tmux'
 
 export function teamsDir() {
   return join(homedir(), '.claude', 'teams')

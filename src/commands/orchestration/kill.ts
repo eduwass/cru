@@ -1,6 +1,7 @@
 import { z } from 'incur'
-import { readTeamConfig } from '../../lib/teams.js'
-import { killPane } from '../../lib/tmux.js'
+import { guard } from '@/lib/preflight'
+import { readTeamConfig } from '@/lib/teams'
+import { killPane } from '@/lib/tmux'
 
 export const kill = {
   description: 'Kill all worker panes for a team',
@@ -8,6 +9,9 @@ export const kill = {
     team: z.string().describe('Team name'),
   }),
   run(c) {
+    const err = guard('tmux')
+    if (err) return err
+
     const teamName = c.args.team
     const config = readTeamConfig(teamName)
 

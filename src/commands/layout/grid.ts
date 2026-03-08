@@ -1,8 +1,9 @@
 import { z } from 'incur'
-import { loadConfig } from '../../lib/config.js'
-import { readTeamConfig, findTeamWindow } from '../../lib/teams.js'
-import { getWindowDimensions, listWindowPanes, applyLayout } from '../../lib/tmux.js'
-import { buildLayout, computeGrid } from '../../lib/layout.js'
+import { guard } from '@/lib/preflight'
+import { loadConfig } from '@/lib/config'
+import { readTeamConfig, findTeamWindow } from '@/lib/teams'
+import { getWindowDimensions, listWindowPanes, applyLayout } from '@/lib/tmux'
+import { buildLayout, computeGrid } from '@/lib/layout'
 
 export const grid = {
   description: "Apply grid layout to a team's tmux panes",
@@ -17,6 +18,9 @@ export const grid = {
     'max-rows': z.coerce.number().optional().describe('Override max rows'),
   }),
   run(c) {
+    const err = guard('tmux-session')
+    if (err) return err
+
     const conf = loadConfig()
 
     // CLI flags take precedence over config file

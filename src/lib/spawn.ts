@@ -1,4 +1,4 @@
-import { splitPane, sendKeys, selectPane } from './tmux.js'
+import { splitPane, sendKeys, selectPane } from './tmux'
 
 const COLORS = ['blue', 'green', 'yellow', 'red', 'magenta', 'cyan']
 

@@ -1,4 +1,4 @@
-import { readTeamConfig, listTeams as getTeams } from '../../lib/teams.js'
+import { readTeamConfig, listTeams as getTeams } from '@/lib/teams'
 
 export const list = {
   description: 'List all teams',

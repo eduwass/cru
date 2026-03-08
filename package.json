@@ -4,14 +4,14 @@
   "description": "Manage tmux layouts for Claude Code agent teams",
   "type": "module",
   "bin": {
-    "agent-teams": "./src/cli.js"
+    "agent-teams": "./src/cli.ts"
   },
   "files": [
     "src/",
     "skills/"
   ],
   "scripts": {
-    "dev": "bun src/cli.js"
+    "dev": "bun src/cli.ts"
   },
   "keywords": [
     "claude-code",
@@ -22,5 +22,9 @@
   "license": "ISC",
   "dependencies": {
     "incur": "^0.2.2"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.3.10",
+    "@types/node": "^25.3.5"
   }
 }
