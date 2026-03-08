@@ -47,7 +47,7 @@ cru init
 2. In Claude Code, spawn a team:
 
 ```
-/cru 4 split the auth module into subtasks and parallelize across workers
+/cru split the auth module into subtasks and parallelize across workers
 ```
 
 That's it — cru creates the tmux panes, applies the grid layout, and your workers are ready to go.
@@ -56,7 +56,7 @@ That's it — cru creates the tmux panes, applies the grid layout, and your work
 
 - **[Parallel feature work](https://code.claude.com/docs/en/agent-teams#when-to-use-agent-teams)** — split subtasks across workers, merge when done
   ```
-  /cru 4 break down the checkout flow into vertical slices, one worker per slice
+  /cru break down the checkout flow into vertical slices, one worker per slice
   ```
 - **[Review crew](https://code.claude.com/docs/en/agent-teams#run-a-parallel-code-review)** — workers build, one reviews
   ```
@@ -64,7 +64,7 @@ That's it — cru creates the tmux panes, applies the grid layout, and your work
   ```
 - **[Competing hypotheses](https://code.claude.com/docs/en/agent-teams#investigate-with-competing-hypotheses)** — debug faster with multiple theories at once
   ```
-  /cru 4 users report the app crashes on login — each worker investigates a different theory
+  /cru users report the app crashes on login — each worker investigates a different theory
   ```
 - **[Research spike](https://code.claude.com/docs/en/agent-teams#start-with-research-and-review)** — explore different approaches simultaneously
   ```

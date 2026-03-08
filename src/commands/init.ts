@@ -41,7 +41,7 @@ export const init = {
       next_steps: [
         'cru spawn <team> -n 4  — spawn workers',
         'cru grid <team>        — re-apply layout',
-        '/cru 4 <task>           — via Claude Code skill',
+        '/cru <task>             — via Claude Code skill',
       ],
     }
   },

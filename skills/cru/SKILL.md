@@ -1,7 +1,7 @@
 ---
 name: cru
 description: Spawn an agent team with workers arranged in a grid layout. Use when the user wants to create a team of agents.
-argument-hint: <num-agents> [task description]
+argument-hint: [num-agents] <task description>
 disable-model-invocation: true
 ---
 
@@ -9,20 +9,26 @@ disable-model-invocation: true
 
 ## Arguments
 
-- `$ARGUMENTS[0]` — number of worker agents (required)
-- Remaining arguments — task/prompt for the workers (optional, defaults to "Say hi to the team lead")
+Parse `$ARGUMENTS` as a single string:
+
+- If the **first word is a number**, use it as the worker count and the rest as the task description.
+- If the **first word is NOT a number**, use the entire string as the task description and decide the worker count yourself based on the task (typically 2–5).
 
 ## Steps
 
-1. **Create the team** using TeamCreate.
+1. **Determine worker count and task** from `$ARGUMENTS` using the rules above.
 
-2. **Spawn + layout in one shot:**
+2. **Create the team** using TeamCreate.
+
+3. **Spawn + layout in one shot:**
    ```bash
-   bun src/cli.js spawn <team-name> --workers $ARGUMENTS[0]
+   bun src/cli.js spawn <team-name> --workers <count>
    ```
    This splits tmux panes, starts `claude` in each, and applies the grid layout.
 
-3. **Report** the team is ready.
+4. **Send the task** to each worker using SendMessage with their agent IDs, giving each worker its specific slice of the task.
+
+5. **Report** the team is ready.
 
 ## Shutdown
 
