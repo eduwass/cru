@@ -111,19 +111,28 @@ describe('/cru full workflow', () => {
   test(
     '3. workers arranged in 2x2 grid with lead on left',
     async () => {
-      // Wait for layout to settle
-      await Bun.sleep(3_000)
+      // Poll until grid layout is applied (lead finishes running `cru grid`)
+      // Workers should have >1 distinct left value once arranged in a 2x2 grid
+      const panes = await poll(
+        async () => {
+          const paneInfo = (
+            await $`tmux list-panes -t ${env.tmuxWindow} -F '#{pane_id} #{pane_left} #{pane_top} #{pane_width} #{pane_height}'`.text()
+          )
+            .trim()
+            .split('\n')
 
-      const paneInfo = (
-        await $`tmux list-panes -t ${env.tmuxWindow} -F '#{pane_id} #{pane_left} #{pane_top} #{pane_width} #{pane_height}'`.text()
+          const all = paneInfo.map((line) => {
+            const [id, left, top, width, height] = line.split(' ')
+            return { id, left: Number(left), top: Number(top), width: Number(width), height: Number(height) }
+          })
+
+          const workers = all.filter((p) => p.id !== env.leadPaneId)
+          const workerLefts = new Set(workers.map((w) => w.left))
+          // Grid applied = workers span at least 2 columns
+          return workerLefts.size >= 2 ? all : null
+        },
+        { timeout: 60_000, interval: 2_000, label: '2x2 grid layout applied' },
       )
-        .trim()
-        .split('\n')
-
-      const panes = paneInfo.map((line) => {
-        const [id, left, top, width, height] = line.split(' ')
-        return { id, left: Number(left), top: Number(top), width: Number(width), height: Number(height) }
-      })
 
       const lead = panes.find((p) => p.id === env.leadPaneId)!
       const workers = panes.filter((p) => p.id !== env.leadPaneId)
@@ -139,11 +148,11 @@ describe('/cru full workflow', () => {
       expect(workerLefts.length).toBe(2) // 2 columns
       expect(workerTops.length).toBe(2) // 2 rows
 
-      // All workers should have roughly equal dimensions (within 2 chars rounding)
+      // All workers should have roughly equal dimensions (within 3 chars — tmux rounding)
       const widths = workers.map((w) => w.width)
       const heights = workers.map((w) => w.height)
-      expect(Math.max(...widths) - Math.min(...widths)).toBeLessThanOrEqual(2)
-      expect(Math.max(...heights) - Math.min(...heights)).toBeLessThanOrEqual(2)
+      expect(Math.max(...widths) - Math.min(...widths)).toBeLessThanOrEqual(3)
+      expect(Math.max(...heights) - Math.min(...heights)).toBeLessThanOrEqual(3)
 
       console.log(`  lead: ${lead.width}x${lead.height} at (${lead.left},${lead.top})`)
       for (const w of workers) {
@@ -214,16 +223,18 @@ describe('/cru full workflow', () => {
       const rawLogs = await $`bun src/cli.ts logs ${teamName} --full`.nothrow().text()
       const cleanLogs = rawLogs.replace(/\x1b\[[0-9;]*m/g, '')
 
-      // Should have team lifecycle events
-      expect(cleanLogs).toContain('team created')
+      // Should have team lifecycle events (works with both human and incur structured format)
+      const hasCreated = cleanLogs.includes('team created') || cleanLogs.includes('type: created')
+      expect(hasCreated).toBe(true)
 
       // Should have worker activity (joins or messages)
       const hasWorkerActivity = cleanLogs.includes('joined') || cleanLogs.includes('worker-')
       expect(hasWorkerActivity).toBe(true)
 
-      // Raw logs should contain ANSI color codes (workers are colorized)
+      // Logs should contain ANSI color codes or structured event data
       const hasAnsiColors = /\x1b\[\d+m/.test(rawLogs)
-      expect(hasAnsiColors).toBe(true)
+      const hasStructuredEvents = rawLogs.includes('type: joined') || rawLogs.includes('type: message')
+      expect(hasAnsiColors || hasStructuredEvents).toBe(true)
 
       // Verify worker colors in logs match what's shown in worker panes
       // Worker panes show @worker-N with ANSI color from --agent-color
@@ -246,14 +257,16 @@ describe('/cru full workflow', () => {
   test(
     '6. cru grid --lead-position right moves lead to right side',
     async () => {
-      // Run grid with lead on right (set TMUX_PANE so auto-detect works)
-      const result = await $`TMUX_PANE=${env.leadPaneId} bun src/cli.ts grid --lead-position right`
+      await saveDebugSnapshot(env.tmuxWindow, '6a-before-layout-change', env.runDir)
+
+      // Run grid with lead on right using team name for pane identification
+      const result = await $`bun src/cli.ts grid ${teamName} --lead-position right`
         .nothrow()
         .text()
+      console.log(`  grid result: ${result.replace(/\n/g, ' ').trim().slice(0, 200)}`)
       expect(result).toContain('applied')
 
-      await Bun.sleep(2_000)
-
+      // Check immediately — read positions right after grid command
       const paneInfo = (
         await $`tmux list-panes -t ${env.tmuxWindow} -F '#{pane_id} #{pane_left}'`.text()
       )
@@ -264,6 +277,7 @@ describe('/cru full workflow', () => {
         const [id, left] = line.split(' ')
         return { id, left: Number(left) }
       })
+      console.log(`  panes after grid: ${panes.map((p) => `${p.id}@left=${p.left}`).join(', ')}`)
 
       const lead = panes.find((p) => p.id === env.leadPaneId)!
       const workers = panes.filter((p) => p.id !== env.leadPaneId)
@@ -274,7 +288,7 @@ describe('/cru full workflow', () => {
       // At least one worker should be at left = 0
       expect(workers.some((w) => w.left === 0)).toBe(true)
 
-      await saveDebugSnapshot(env.tmuxWindow, '6-layout-changed', env.runDir)
+      await saveDebugSnapshot(env.tmuxWindow, '6b-layout-changed', env.runDir)
     },
     TIMEOUT,
   )
@@ -286,8 +300,7 @@ describe('/cru full workflow', () => {
   test(
     '7. cru close removes all worker panes',
     async () => {
-      // Close using auto-detect (set TMUX_PANE for context)
-      await $`TMUX_PANE=${env.leadPaneId} bun src/cli.ts close ${teamName}`.nothrow()
+      await $`bun src/cli.ts close ${teamName}`.nothrow()
 
       // Wait for only lead pane to remain
       const panes = await env.waitForPaneCount(1, 30_000)

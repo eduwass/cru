@@ -1,7 +1,7 @@
 import { z } from 'incur'
 import { loadConfig } from '@/lib/config'
 import { readTeamConfig, findTeamWindow } from '@/lib/teams'
-import { getWindowDimensions, listWindowPanes, applyLayout, currentPane, paneWindow } from '@/lib/tmux'
+import { tmux, getWindowDimensions, listWindowPanes, applyLayout, currentPane, paneWindow } from '@/lib/tmux'
 import { buildLayout, computeGrid } from '@/lib/layout'
 import { loadPanes } from '@/lib/panes'
 
@@ -90,6 +90,27 @@ export const grid = {
 
     const layoutStr = buildLayout(W, H, leadId, workerIds, conf.layout)
     applyLayout(windowId, layoutStr)
+
+    // tmux assigns panes to layout cells by window order, not by IDs in the layout
+    // string. For position left/top the lead is first in both orders, so it works.
+    // For right/bottom, the lead cell is last but the lead pane is first — fix with swap.
+    const pos = conf.layout.lead.position
+    if (pos === 'right' || pos === 'bottom') {
+      const isH = pos === 'right'
+      const posKey = isH ? 'pane_left' : 'pane_top'
+      const afterInfo = tmux(`list-panes -t ${windowId} -F "#{pane_id} #{${posKey}}"`)
+        .split('\n')
+        .map((l) => { const [id, v] = l.split(' '); return { id, pos: Number(v) } })
+
+      const leadAfter = afterInfo.find((p) => p.id === leadPane.id)
+      const maxPos = Math.max(...afterInfo.map((p) => p.pos))
+      if (leadAfter && leadAfter.pos !== maxPos) {
+        const paneAtLeadPos = afterInfo.find((p) => p.pos === maxPos)
+        if (paneAtLeadPos) {
+          tmux(`swap-pane -d -s ${leadPane.id} -t ${paneAtLeadPos.id}`)
+        }
+      }
+    }
 
     const N = workerPanes.length
     const { cols, rows } = computeGrid(N, conf.layout)
