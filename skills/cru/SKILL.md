@@ -45,8 +45,10 @@ Parse `$ARGUMENTS` as a single string:
 
 ## Shutdown
 
-```bash
-cru panes close <team-name>
-```
+1. **Send shutdown requests first** — use `SendMessage` with `type: "shutdown_request"` to each worker. Wait for approvals (or idle notifications).
+2. **Then close panes** — `cru panes close <team-name>`
+3. **Then delete team** — `TeamDelete`
+
+Closing panes before agents approve kills them mid-process, which causes `TeamDelete` to see "active" members and refuse cleanup.
 
 Team data (logs, messages) is preserved after close — reviewable via `cru logs <team>`. Use `cru clean` to remove old teams.
