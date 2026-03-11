@@ -1,7 +1,8 @@
-import { z } from 'incur'
 import { readdirSync, rmSync, statSync } from 'node:fs'
-import { join } from 'node:path'
 import { homedir } from 'node:os'
+import { join } from 'node:path'
+import { z } from 'incur'
+import { isTeamAlive } from '@/lib/panes'
 import { teamsDir } from '@/lib/teams'
 
 export const clean = {
@@ -36,16 +37,18 @@ export const clean = {
       try {
         const stat = statSync(configPath)
         const age = now - stat.mtimeMs
+        const dead = !isTeamAlive(name)
 
-        if (c.options.all || age > maxAge) {
+        if (c.options.all || age > maxAge || dead) {
           const days = Math.floor(age / (24 * 60 * 60 * 1000))
-          toRemove.push({ name, age: days === 0 ? 'today' : `${days}d ago` })
+          const reason = dead ? 'dead' : days === 0 ? 'today' : `${days}d ago`
+          toRemove.push({ name, age: reason })
         }
       } catch {}
     }
 
     if (toRemove.length === 0) {
-      if (!c.agent) console.log(`No teams older than ${c.options.days} days`)
+      if (!c.agent) console.log('Nothing to clean')
       return { removed: 0, teams: [] }
     }
 
@@ -61,7 +64,9 @@ export const clean = {
     for (const t of toRemove) {
       rmSync(join(dir, t.name), { recursive: true, force: true })
       // Also clean up tasks for this team
-      try { rmSync(join(tasksBaseDir, t.name), { recursive: true, force: true }) } catch {}
+      try {
+        rmSync(join(tasksBaseDir, t.name), { recursive: true, force: true })
+      } catch {}
     }
 
     if (!c.agent) {
