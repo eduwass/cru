@@ -3,9 +3,136 @@ import { loadConfig } from '@/lib/config'
 import { readTeamConfig, findTeamWindow, findTeamForCurrentWindow } from '@/lib/teams'
 import { getBackend } from '@/lib/terminal'
 import { computeGrid } from '@/lib/layout'
-import { loadPanes } from '@/lib/panes'
+import { loadPanes, savePanes } from '@/lib/panes'
+import { inGhostty } from '@/lib/env'
+
+/**
+ * Ghostty+tmux mirror flow:
+ * Workers live in a headless tmux with a CUSTOM SOCKET (tmux -L claude-swarm-*).
+ * We find the socket, discover worker panes, break each into its own tmux window,
+ * create Ghostty splits, and attach each to a session-group view.
+ *
+ * Uses INCREMENTAL mirroring: opens each pane as soon as the worker spawns,
+ * without waiting for all workers to be ready.
+ */
+function runGridGhostty(c) {
+  const {
+    findBestSwarm,
+    getWorkerPanes,
+    mirrorSingleWorker,
+    setRemainOnExit,
+  } = require('@/lib/mirror')
+  const {
+    currentTerminal,
+    currentWindow,
+    focusTerminal,
+  } = require('@/lib/ghostty')
+
+  const teamName = c.args.team
+  const expectedWorkers = c.options.expect
+  const deadline = Date.now() + 60_000
+
+  // 1. Find the swarm socket
+  let swarm: { socket: string; session: string } | null = null
+  while (Date.now() < deadline) {
+    swarm = findBestSwarm()
+    if (swarm) break
+    Bun.sleepSync(200)
+  }
+
+  if (!swarm) {
+    return c.error({
+      code: 'NO_SWARM',
+      message: 'No claude-swarm tmux session found. Workers may not have spawned yet.',
+    })
+  }
+
+  console.log(`  [grid] found swarm: ${swarm.socket}/${swarm.session}`)
+
+  // Keep dead panes visible after worker exits
+  setRemainOnExit(swarm.socket)
+
+  // 2. Incrementally mirror workers as they appear
+  const leadTerminalId = currentTerminal()
+  const mirrored = new Map<string, { ghosttyTerminal: string; viewSession: string }>()
+
+  while (Date.now() < deadline) {
+    const allWorkers = getWorkerPanes(swarm.socket)
+    const newWorkers = allWorkers.filter(p => !mirrored.has(p))
+
+    for (const paneId of newWorkers) {
+      const idx = mirrored.size
+      const splitDir: 'right' | 'down' = idx === 0 ? 'right' : 'down'
+      const splitTarget = idx === 0
+        ? leadTerminalId
+        : [...mirrored.values()].pop()!.ghosttyTerminal
+
+      const result = mirrorSingleWorker(
+        swarm.socket, swarm.session,
+        paneId, idx, splitTarget, splitDir,
+      )
+      mirrored.set(paneId, result)
+    }
+
+    // All expected workers mirrored
+    if (expectedWorkers && mirrored.size >= expectedWorkers) break
+
+    // No expected count — wait for workers to stop appearing
+    if (!expectedWorkers && mirrored.size > 0 && newWorkers.length === 0) {
+      Bun.sleepSync(3000) // give stragglers 3s
+      const finalWorkers = getWorkerPanes(swarm.socket)
+      if (finalWorkers.filter(p => !mirrored.has(p)).length === 0) break
+      continue
+    }
+
+    Bun.sleepSync(200)
+  }
+
+  if (mirrored.size === 0) {
+    return c.error({
+      code: 'NO_WORKERS',
+      message: 'No worker panes found in swarm.',
+    })
+  }
+
+  // 3. Focus lead
+  focusTerminal(leadTerminalId)
+
+  // 4. Save pane tracking
+  if (teamName) {
+    const mirrors = [...mirrored.entries()]
+    savePanes(teamName, {
+      leadPane: leadTerminalId,
+      windowId: currentWindow(),
+      backend: 'ghostty',
+      createdAt: Date.now(),
+      workers: mirrors.map(([, m], i) => ({
+        name: `worker-${i + 1}`,
+        paneId: m.ghosttyTerminal,
+        color: ['green', 'blue', 'yellow', 'magenta', 'cyan', 'red'][i % 6],
+      })),
+    })
+  }
+
+  return {
+    applied: true,
+    backend: 'ghostty+tmux',
+    swarm: `${swarm.socket}/${swarm.session}`,
+    workers: mirrored.size,
+    mirrors: [...mirrored.entries()].map(([paneId, m]) => ({
+      tmux: paneId,
+      ghostty: m.ghosttyTerminal,
+      view: m.viewSession,
+    })),
+  }
+}
 
 function runGrid(c) {
+  // Ghostty: mirror tmux panes into native splits
+  if (inGhostty()) {
+    return runGridGhostty(c)
+  }
+
   const backend = getBackend()
   const conf = loadConfig()
 
@@ -108,6 +235,27 @@ function runClose(c) {
     for (const w of cruPanes.workers) {
       backend.killPane(w.paneId)
       closed.push({ name: w.name, pane: w.paneId })
+    }
+
+    // If mirrored, also clean up tmux view sessions on the custom socket
+    if (cruPanes.backend === 'ghostty') {
+      try {
+        const { findSwarmSockets } = require('@/lib/mirror')
+        const { execSync } = require('node:child_process')
+        for (const socket of findSwarmSockets()) {
+          try {
+            const sessions = execSync(
+              `tmux -L ${socket} list-sessions -F "#{session_name}"`,
+              { encoding: 'utf-8', timeout: 3000 },
+            ).trim().split('\n')
+            for (const name of sessions) {
+              if (name.startsWith('view-')) {
+                try { execSync(`tmux -L ${socket} kill-session -t ${name}`, { timeout: 3000 }) } catch {}
+              }
+            }
+          } catch {}
+        }
+      } catch {}
     }
   } else {
     try {

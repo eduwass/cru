@@ -29,13 +29,13 @@ Parse `$ARGUMENTS` as a single string:
      - Context about what other workers are doing
      - An instruction to message teammates to share findings and discuss
 
-   Spawn all workers in a single message (parallel Agent calls).
+   **IMPORTANT:** Spawn all workers AND apply the grid layout in a **single message** — include all Agent calls AND the Bash call for `cru panes grid` together. This ensures the grid command starts polling immediately while workers are still launching.
 
-4. **Apply grid layout** after spawning:
+4. **Apply grid layout** (in the same message as step 3):
    ```bash
    cru panes grid --expect <worker-count>
    ```
-   This waits for worker panes to appear in tmux, then arranges them in a grid (lead on one side, workers in an auto-sized grid on the other).
+   This polls for worker panes (up to 30s) and arranges them in a grid. In Ghostty, it automatically mirrors tmux panes into native splits.
 
    If the grid command fails (e.g., not in a tmux session), that's OK — workers still run as background agents with the team bar visible. Tell the user they can start a tmux session for the grid layout.
 

@@ -151,10 +151,15 @@ class GhosttyBackend implements TerminalBackend {
     closeTerminal(paneId)
   }
 
-  applyGrid(_windowId: string, _leadPaneId: string, _workerPaneIds: string[], _conf: any): void {
-    // Ghostty has no resize/layout API. The grid was formed by the split order
-    // when panes were created. Nothing to do here — splits already produced
-    // an even grid via Ghostty's default 50/50 split behavior.
+  applyGrid(_windowId: string, _leadPaneId: string, workerPaneIds: string[], _conf: any): void {
+    // In Ghostty, worker panes live in a headless tmux session (claude-swarm-*).
+    // Mirror them into Ghostty splits via tmux session groups.
+    if (workerPaneIds.length > 0 && workerPaneIds[0].startsWith('%')) {
+      // These are tmux pane IDs — mirror them to Ghostty
+      const { mirrorToGhostty } = require('./mirror')
+      mirrorToGhostty(workerPaneIds)
+    }
+    // Otherwise, splits were already created directly in Ghostty — nothing to do.
   }
 
   listPaneDetails(windowId: string): PaneDetails[] {
