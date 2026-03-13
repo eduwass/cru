@@ -1,4 +1,4 @@
-import { hasBinary, inTmux, detectTerminal } from '@/lib/env'
+import { hasBinary, inTmux, inGhostty, detectTerminal } from '@/lib/env'
 
 const INSTALL_HINTS = {
   tmux: {
@@ -48,6 +48,28 @@ export function preflight(...checks) {
       case 'claude':
         if (!hasBinary('claude')) {
           errors.push({ check: 'claude', message: 'Claude Code CLI is not installed', hint: platformHint('claude') })
+        }
+        break
+
+      case 'pane-session':
+        if (inGhostty()) {
+          // Ghostty native mode — check AppleScript support
+          if (process.platform !== 'darwin') {
+            errors.push({ check: 'pane-session', message: 'Ghostty AppleScript is only available on macOS' })
+          } else {
+            try {
+              const { isGhosttyScriptable } = require('./ghostty')
+              if (!isGhosttyScriptable()) {
+                errors.push({ check: 'pane-session', message: 'Ghostty is not responding to AppleScript. Check that macos-applescript is enabled.' })
+              }
+            } catch {
+              errors.push({ check: 'pane-session', message: 'Cannot connect to Ghostty via AppleScript' })
+            }
+          }
+        } else if (!hasBinary('tmux')) {
+          errors.push({ check: 'pane-session', message: 'tmux is not installed (or use Ghostty for native pane support)', hint: platformHint('tmux') })
+        } else if (!inTmux()) {
+          errors.push({ check: 'pane-session', message: 'Not inside a tmux session (or use Ghostty for native pane support)', hint: tmuxCmd })
         }
         break
 

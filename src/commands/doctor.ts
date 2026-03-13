@@ -1,5 +1,5 @@
 import { z } from 'incur'
-import { hasBinary, getVersion, inTmux, detectTerminal } from '@/lib/env'
+import { hasBinary, getVersion, inTmux, inGhostty, detectTerminal } from '@/lib/env'
 
 export const doctor = {
   description: 'Check environment requirements for cru',
@@ -41,6 +41,31 @@ export const doctor = {
       checks.push({ name: 'claude', status: 'fail', detail: 'not installed', fix: 'npm install -g @anthropic-ai/claude-code' })
     } else {
       checks.push({ name: 'claude', status: 'ok', detail: getVersion('claude --version') || 'installed' })
+    }
+
+    // Ghostty native pane support (AppleScript)
+    if (terminal === 'ghostty') {
+      if (process.platform !== 'darwin') {
+        checks.push({ name: 'ghostty', status: 'fail', detail: 'AppleScript only available on macOS' })
+      } else {
+        try {
+          const { ghosttyVersion, isGhosttyScriptable } = require('@/lib/ghostty')
+          if (isGhosttyScriptable()) {
+            const ver = ghosttyVersion() || 'unknown'
+            checks.push({ name: 'ghostty', status: 'ok', detail: `v${ver} (AppleScript enabled)` })
+          } else {
+            checks.push({ name: 'ghostty', status: 'fail', detail: 'AppleScript not responding', fix: 'Set macos-applescript = true in Ghostty config' })
+          }
+        } catch {
+          checks.push({ name: 'ghostty', status: 'fail', detail: 'cannot connect via AppleScript' })
+        }
+      }
+
+      if (inGhostty()) {
+        checks.push({ name: 'pane-backend', status: 'ok', detail: 'ghostty (native AppleScript)' })
+      } else if (inTmux()) {
+        checks.push({ name: 'pane-backend', status: 'ok', detail: 'tmux (inside Ghostty)' })
+      }
     }
 
     const bunPath = hasBinary('bun')

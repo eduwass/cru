@@ -7,6 +7,7 @@ interface PaneRecord {
   windowId: string
   workers: Array<{ name: string; paneId: string; color: string }>
   createdAt: number
+  backend?: 'tmux' | 'ghostty'
 }
 
 function panePath(teamName: string): string {
@@ -27,12 +28,13 @@ export function loadPanes(teamName: string): PaneRecord | null {
   }
 }
 
-/** Check if a team has live worker panes in tmux. */
+/** Check if a team has live worker panes. */
 export function isTeamAlive(teamName: string): boolean {
   try {
-    const { execSync } = require('node:child_process')
-    const allPanes: string = execSync('tmux list-panes -a -F "#{pane_id}"', { encoding: 'utf-8' }).trim()
-    const paneSet = new Set(allPanes.split('\n'))
+    const { getBackend } = require('./terminal')
+    const backend = getBackend()
+    const allPanes = backend.listAllPaneIds()
+    const paneSet = new Set(allPanes)
 
     // Check cru's own pane tracking first
     const cruPanes = loadPanes(teamName)

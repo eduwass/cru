@@ -1,11 +1,12 @@
 import { z } from 'incur'
 import { loadConfig } from '@/lib/config'
 import { readTeamConfig, findTeamWindow, findTeamForCurrentWindow } from '@/lib/teams'
-import { tmux, getWindowDimensions, listWindowPanes, applyLayout, currentPane, paneWindow, killPane } from '@/lib/tmux'
-import { buildLayout, computeGrid } from '@/lib/layout'
+import { getBackend } from '@/lib/terminal'
+import { computeGrid } from '@/lib/layout'
 import { loadPanes } from '@/lib/panes'
 
 function runGrid(c) {
+  const backend = getBackend()
   const conf = loadConfig()
 
   if (c.options['lead-size'] != null) conf.layout.lead.size = c.options['lead-size']
@@ -33,23 +34,23 @@ function runGrid(c) {
       )
     }
   } else {
-    leadPaneId = currentPane()
-    windowId = paneWindow(leadPaneId)
+    leadPaneId = backend.currentPane()
+    windowId = backend.paneWindow(leadPaneId)
   }
 
-  if (!windowId) return c.error({ code: 'NO_WINDOW', message: 'Could not find tmux window' })
+  if (!windowId) return c.error({ code: 'NO_WINDOW', message: 'Could not find terminal window' })
 
   if (c.options.expect) {
     const expectedTotal = c.options.expect + 1
     const deadline = Date.now() + 30_000
     while (Date.now() < deadline) {
-      if (listWindowPanes(windowId).length >= expectedTotal) break
+      if (backend.listWindowPanes(windowId).length >= expectedTotal) break
       Bun.sleepSync(500)
     }
   }
 
-  const { w: W, h: H } = getWindowDimensions(windowId)
-  const panes = listWindowPanes(windowId)
+  const { w: W, h: H } = backend.getWindowDimensions(windowId)
+  const panes = backend.listWindowPanes(windowId)
 
   if (panes.length < 2) {
     return c.error({ code: 'NO_WORKERS', message: 'Only one pane in window — nothing to arrange' })
@@ -67,30 +68,7 @@ function runGrid(c) {
   if (!leadPane) return c.error({ code: 'NO_LEAD', message: 'Could not identify lead pane' })
   if (workerPanes.length === 0) return c.error({ code: 'NO_WORKERS', message: 'No worker panes found' })
 
-  const leadId = leadPane.id.replace('%', '')
-  const workerIds = workerPanes.map((p) => p.id.replace('%', ''))
-
-  const layoutStr = buildLayout(W, H, leadId, workerIds, conf.layout)
-  applyLayout(windowId, layoutStr)
-
-  // Fix pane assignment for right/bottom — tmux assigns by window order, not layout IDs
-  const pos = conf.layout.lead.position
-  if (pos === 'right' || pos === 'bottom') {
-    const isH = pos === 'right'
-    const posKey = isH ? 'pane_left' : 'pane_top'
-    const afterInfo = tmux(`list-panes -t ${windowId} -F "#{pane_id} #{${posKey}}"`)
-      .split('\n')
-      .map((l) => { const [id, v] = l.split(' '); return { id, pos: Number(v) } })
-
-    const leadAfter = afterInfo.find((p) => p.id === leadPane.id)
-    const maxPos = Math.max(...afterInfo.map((p) => p.pos))
-    if (leadAfter && leadAfter.pos !== maxPos) {
-      const paneAtLeadPos = afterInfo.find((p) => p.pos === maxPos)
-      if (paneAtLeadPos) {
-        tmux(`swap-pane -d -s ${leadPane.id} -t ${paneAtLeadPos.id}`)
-      }
-    }
-  }
+  backend.applyGrid(windowId, leadPane.id, workerPanes.map((p) => p.id), conf.layout)
 
   const N = workerPanes.length
   const { cols, rows } = computeGrid(N, conf.layout)
@@ -120,6 +98,7 @@ function runGrid(c) {
 }
 
 function runClose(c) {
+  const backend = getBackend()
   const teamName = c.args.team || findTeamForCurrentWindow()
   if (!teamName) return c.error({ code: 'NO_TEAM', message: 'No team specified and none found in current window' })
   const closed: Array<{ name: string; pane: string }> = []
@@ -127,7 +106,7 @@ function runClose(c) {
   const cruPanes = loadPanes(teamName)
   if (cruPanes && cruPanes.workers.length > 0) {
     for (const w of cruPanes.workers) {
-      killPane(w.paneId)
+      backend.killPane(w.paneId)
       closed.push({ name: w.name, pane: w.paneId })
     }
   } else {
@@ -135,7 +114,7 @@ function runClose(c) {
       const config = readTeamConfig(teamName)
       const workers = config.members.filter((m) => m.tmuxPaneId)
       for (const member of workers) {
-        killPane(member.tmuxPaneId)
+        backend.killPane(member.tmuxPaneId)
         closed.push({ name: member.name, pane: member.tmuxPaneId })
       }
     } catch {}
@@ -143,12 +122,12 @@ function runClose(c) {
 
   if (closed.length === 0) {
     try {
-      const lead = currentPane()
-      const windowId = paneWindow(lead)
-      const panes = listWindowPanes(windowId)
+      const lead = backend.currentPane()
+      const windowId = backend.paneWindow(lead)
+      const panes = backend.listWindowPanes(windowId)
       for (const p of panes) {
         if (p.id !== lead) {
-          killPane(p.id)
+          backend.killPane(p.id)
           closed.push({ name: `pane-${closed.length + 1}`, pane: p.id })
         }
       }
@@ -159,6 +138,7 @@ function runClose(c) {
 }
 
 function runList(c) {
+  const backend = getBackend()
   const teamName = c.args.team
   let windowId: string | null = null
 
@@ -166,25 +146,19 @@ function runList(c) {
     windowId = findTeamWindow(teamName)
   } else {
     try {
-      const lead = currentPane()
-      windowId = paneWindow(lead)
+      const lead = backend.currentPane()
+      windowId = backend.paneWindow(lead)
     } catch {}
   }
 
-  if (!windowId) return c.error({ code: 'NO_WINDOW', message: 'Could not find tmux window' })
+  if (!windowId) return c.error({ code: 'NO_WINDOW', message: 'Could not find terminal window' })
 
-  const info = tmux(`list-panes -t ${windowId} -F "#{pane_id} #{pane_index} #{pane_width} #{pane_height} #{pane_left} #{pane_top} #{pane_pid}"`)
-    .split('\n')
-    .map((l) => {
-      const [id, index, width, height, left, top, pid] = l.split(' ')
-      return { id, index: Number(index), width: Number(width), height: Number(height), left: Number(left), top: Number(top), pid: Number(pid) }
-    })
-
+  const info = backend.listPaneDetails(windowId)
   return { window: windowId, panes: info }
 }
 
 export const panes = {
-  description: 'Manage tmux panes (list, grid layout, close)',
+  description: 'Manage terminal panes (list, grid layout, close)',
   args: z.object({
     action: z.enum(['list', 'grid', 'close']).default('list').describe('Action: list, grid, or close'),
     team: z.string().optional().describe('Team name (omit to auto-detect)'),

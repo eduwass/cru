@@ -1,7 +1,6 @@
 import { readFileSync, readdirSync } from 'node:fs'
 import { join } from 'node:path'
 import { homedir } from 'node:os'
-import { tmux } from './tmux'
 import { loadPanes } from './panes'
 
 export function teamsDir() {
@@ -29,10 +28,11 @@ export function listTeams() {
   }
 }
 
-/** Find which team owns the current tmux window. */
+/** Find which team owns the current terminal window. */
 export function findTeamForCurrentWindow(): string | null {
-  const { paneWindow, currentPane } = require('./tmux')
-  const windowId = paneWindow(currentPane())
+  const { getBackend } = require('./terminal')
+  const backend = getBackend()
+  const windowId = backend.paneWindow(backend.currentPane())
   for (const name of listTeams()) {
     const panes = loadPanes(name)
     if (panes?.windowId === windowId) return name
@@ -52,10 +52,17 @@ export function findTeamWindow(teamName) {
     .map((m) => m.tmuxPaneId)
   if (workerPaneIds.length === 0) return null
 
-  const lines = tmux('list-panes -a -F "#{window_id} #{pane_id}"').split('\n')
-  for (const line of lines) {
-    const [winId, paneId] = line.split(' ')
-    if (paneId === workerPaneIds[0]) return winId
+  // Search all panes to find which window contains a worker pane
+  const { getBackend } = require('./terminal')
+  const backend = getBackend()
+  if (backend.name === 'tmux') {
+    const { tmux } = require('./tmux')
+    const lines = tmux('list-panes -a -F "#{window_id} #{pane_id}"').split('\n')
+    for (const line of lines) {
+      const [winId, paneId] = line.split(' ')
+      if (paneId === workerPaneIds[0]) return winId
+    }
   }
+  // For Ghostty, we can't search pane→window — fall through to null
   return null
 }
