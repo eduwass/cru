@@ -1,66 +1,28 @@
 /**
  * Ghostty e2e test environment setup.
  *
- * Creates a new Ghostty window via AppleScript, launches Claude Code,
- * and uses screenshot + Vision OCR for assertions and readiness detection.
+ * Creates a new Ghostty window, starts tmux inside it, then launches Claude
+ * Code. Tests run in that isolated window without interfering with your work.
+ *
+ * This mirrors the iTerm2 setup (setup.ts) — both create a tmux session and
+ * use tmux for all assertions. The only difference is window creation
+ * (AppleScript vs it2) and Claude readiness detection.
  *
  * Lifecycle:
- *   1. checkGhosttyPrereqs() — verify Ghostty, claude, cru are available
- *   2. createGhosttyTestEnv() — new window → cru init → claude, wait for ready
+ *   1. checkGhosttyPrereqs() — verify Ghostty, tmux, claude are available
+ *   2. createGhosttyTestEnv() — new window → tmux → claude, wait for ready
  *   3. ... run tests ...
- *   4. env.resetForNextTest() — close worker splits, wait for Claude prompt
- *   5. env.teardown() — close the test window
+ *   4. env.teardown() — kill the tmux session (closes panes)
  */
 import { execSync } from 'node:child_process'
-import {
-  ensureOcrBinary,
-  ocr,
-  screenshot,
-  sendLine,
-  sendText,
-  closeTerminal,
-  focusTerminal,
-  listTerminals,
-  listAllTerminals,
-  saveDebugSnapshot,
-} from './ghostty-helpers'
-import { createRunDir } from './helpers'
+import { createRunDir, poll, captureTmuxPane } from './helpers'
+
+// Re-export TestEnv from the shared setup — Ghostty tests use the same shape.
+export type { TestEnv, TmuxPane } from './setup'
+import type { TestEnv, TmuxPane } from './setup'
 
 // ---------------------------------------------------------------------------
-// Types
-// ---------------------------------------------------------------------------
-
-export interface GhosttyTestEnv {
-  /** Ghostty window ID (AppleScript format, e.g. tab-group-...). */
-  windowId: string
-  /** Lead terminal ID (where Claude runs). */
-  leadTerminalId: string
-  /** Run directory for artifacts. */
-  runDir: string
-  /** Send a line of text to the lead terminal. */
-  send: (text: string) => void
-  /** Send text without newline. */
-  sendRaw: (text: string) => void
-  /** Read the screen via screenshot + OCR. */
-  readScreen: (opts?: { waitMs?: number }) => string
-  /** List terminal IDs in the test window. */
-  listTerminals: () => string[]
-  /** Wait for a specific terminal count. */
-  waitForTerminalCount: (expected: number, timeout?: number) => string[]
-  /** Wait until screen contains text. */
-  waitForText: (text: string, timeout?: number) => string
-  /** Wait for Claude to be idle and at prompt. */
-  waitForClaudeReady: (timeout?: number) => string
-  /** Save a debug snapshot (screenshot + OCR dump). */
-  snapshot: (label: string) => void
-  /** Close worker terminals, keep lead, wait for Claude prompt. */
-  resetForNextTest: () => void
-  /** Close the entire test window. */
-  teardown: () => void
-}
-
-// ---------------------------------------------------------------------------
-// AppleScript helpers (test-specific)
+// AppleScript helpers (minimal — just window creation)
 // ---------------------------------------------------------------------------
 
 function ghostty(script: string): string {
@@ -68,23 +30,10 @@ function ghostty(script: string): string {
   return execSync('osascript', { input: wrapped, encoding: 'utf-8' }).trim()
 }
 
-// ---------------------------------------------------------------------------
-// Claude readiness detection via OCR
-// ---------------------------------------------------------------------------
-
-/**
- * Markers that indicate Claude is ready for input.
- * These appear in Claude Code's TUI when it's idle and waiting.
- */
-const CLAUDE_READY_MARKERS = [
-  'bypass permissions on',    // dangerously-skip-permissions prompt
-  'is waiting for your input',
-  'What would you like to do',
-  'shift+tab to cycle',       // prompt hint
-]
-
-function isClaudeReadyScreen(screen: string): boolean {
-  return CLAUDE_READY_MARKERS.some((m) => screen.includes(m))
+function sendLine(terminalId: string, text: string): void {
+  const escaped = text.replace(/\\/g, '\\\\').replace(/"/g, '\\"')
+  ghostty(`input text "${escaped}" to terminal id "${terminalId}"`)
+  ghostty(`send key "enter" to terminal id "${terminalId}"`)
 }
 
 // ---------------------------------------------------------------------------
@@ -96,21 +45,15 @@ export function checkGhosttyPrereqs(): void {
     throw new Error('Ghostty e2e tests require macOS (AppleScript)')
   }
 
-  // Check Ghostty is running and scriptable
   try {
     ghostty('get name')
   } catch {
     throw new Error('Ghostty is not running or AppleScript is disabled. Set macos-applescript = true in Ghostty config.')
   }
 
-  // Check cru and claude are available
   const missing: string[] = []
-  for (const bin of ['claude', 'bun']) {
-    try {
-      execSync(`which ${bin}`, { encoding: 'utf-8' })
-    } catch {
-      missing.push(bin)
-    }
+  for (const bin of ['claude', 'bun', 'tmux']) {
+    try { execSync(`which ${bin}`, { encoding: 'utf-8' }) } catch { missing.push(bin) }
   }
   if (missing.length > 0) {
     throw new Error(`Missing prerequisites: ${missing.join(', ')}`)
@@ -121,139 +64,149 @@ export function checkGhosttyPrereqs(): void {
 // Test environment
 // ---------------------------------------------------------------------------
 
-let _env: GhosttyTestEnv | null = null
+let _env: TestEnv | null = null
 
-export function createGhosttyTestEnv(testName = 'test', opts?: { launchClaude?: boolean }): GhosttyTestEnv {
+export async function createGhosttyTestEnv(testName = 'test'): Promise<TestEnv> {
   if (_env) return _env
 
-  const launchClaude = opts?.launchClaude ?? true
-
   checkGhosttyPrereqs()
-  ensureOcrBinary()
 
   const cwd = process.cwd()
+  const tmuxSession = `cru-e2e-ghostty-${Date.now()}`
   const runDir = createRunDir(testName)
 
   // 1. Create a new Ghostty window
   ghostty('activate')
-  Bun.sleepSync(300)
+  await Bun.sleep(300)
   ghostty('new window')
-  Bun.sleepSync(1000) // let shell start
+  await Bun.sleep(1000)
 
-  // 2. Get window and lead terminal IDs
-  const windowId = ghostty('get id of front window')
   const leadTerminalId = ghostty('get id of focused terminal of selected tab of front window')
+  console.log(`  [setup] ghostty terminal=${leadTerminalId}`)
 
-  console.log(`  [setup] ghostty window=${windowId} lead=${leadTerminalId}`)
+  // 2. Start tmux in the Ghostty terminal
+  sendLine(leadTerminalId, `tmux new-session -s ${tmuxSession}`)
+  await Bun.sleep(1500)
 
-  // 3. Set up test environment — cd to project, install skill
-  sendLine(leadTerminalId, `cd ${cwd}`)
-  Bun.sleepSync(300)
-  sendLine(leadTerminalId, 'bun src/cli.ts init --force')
-  Bun.sleepSync(1500)
+  // Wait for the tmux session
+  await poll(
+    async () => {
+      try {
+        execSync(`tmux has-session -t ${tmuxSession}`, { encoding: 'utf-8' })
+        return true
+      } catch { return null }
+    },
+    { timeout: 10_000, interval: 500, label: 'tmux session created' },
+  )
 
-  // 4. Launch Claude Code (if requested)
-  if (launchClaude) {
-    sendLine(leadTerminalId, 'claude --dangerously-skip-permissions')
-    console.log('  [setup] waiting for Claude to be ready...')
-  }
+  // Get tmux pane info
+  const paneInfo = execSync(
+    `tmux list-panes -t ${tmuxSession} -F '#{window_id} #{pane_id}'`,
+    { encoding: 'utf-8' },
+  ).trim()
+  const [tmuxWindow, leadPaneId] = paneInfo.split(' ')
 
-  // Build the env object
-  const env: GhosttyTestEnv = {
-    windowId,
-    leadTerminalId,
+  console.log(`  [setup] tmux session=${tmuxSession} window=${tmuxWindow} pane=${leadPaneId}`)
+
+  // 3. Set up test environment
+  execSync(`tmux send-keys -t ${leadPaneId} 'cd ${cwd}' Enter`)
+  await Bun.sleep(300)
+  execSync(`tmux send-keys -t ${leadPaneId} 'bun src/cli.ts init --force' Enter`)
+  await Bun.sleep(1500)
+  execSync(`tmux send-keys -t ${leadPaneId} 'claude --dangerously-skip-permissions' Enter`)
+
+  // 4. Wait for Claude to be ready (poll tmux pane content for prompt markers)
+  console.log('  [setup] waiting for Claude to be ready...')
+  await poll(
+    async () => {
+      const content = await captureTmuxPane(leadPaneId)
+      const markers = ['bypass permissions on', 'What would you like to do', 'shift+tab']
+      return markers.some((m) => content.includes(m)) ? true : null
+    },
+    { timeout: 90_000, interval: 2_000, label: 'Claude ready' },
+  )
+  console.log(`  [setup] Claude ready`)
+
+  // 5. Build the TestEnv (same shape as iTerm setup)
+  const env: TestEnv = {
+    sessionId: leadTerminalId, // Ghostty terminal ID (for reference only)
+    tmuxWindow,
+    tmuxSession,
+    leadPaneId,
     runDir,
 
-    send(text: string) {
-      focusTerminal(leadTerminalId)
-      sendLine(leadTerminalId, text)
+    async send(text: string) {
+      // Wait for Claude to be ready before sending
+      await poll(
+        async () => {
+          const content = await captureTmuxPane(leadPaneId)
+          const markers = ['bypass permissions on', 'What would you like to do', 'shift+tab']
+          return markers.some((m) => content.includes(m)) ? true : null
+        },
+        { timeout: 60_000, interval: 2_000, label: 'Claude ready for input' },
+      )
+      execSync(`tmux send-keys -t ${leadPaneId} ${JSON.stringify(text)} Enter`)
     },
 
-    sendRaw(text: string) {
-      focusTerminal(leadTerminalId)
-      sendText(leadTerminalId, text)
+    async captureScreen(_sid?: string) {
+      return captureTmuxPane(leadPaneId)
     },
 
-    readScreen(opts?: { waitMs?: number }) {
-      const waitMs = opts?.waitMs ?? 500
-      Bun.sleepSync(waitMs)
-      // Ensure Ghostty is frontmost so screencapture gets the rendered content
-      ghostty('activate')
-      Bun.sleepSync(200)
-      const imgPath = screenshot()
-      return ocr(imgPath)
+    async listPanes() {
+      const out = execSync(
+        `tmux list-panes -t ${tmuxWindow} -F '#{pane_id} #{pane_index} #{pane_width} #{pane_height} #{pane_pid}'`,
+        { encoding: 'utf-8' },
+      ).trim()
+
+      return out.split('\n').filter(Boolean).map((line) => {
+        const [id, index, width, height, pid] = line.split(' ')
+        return { id, index: Number(index), width: Number(width), height: Number(height), pid: Number(pid) }
+      })
     },
 
-    listTerminals() {
-      return listTerminals(windowId)
+    async waitForPaneCount(expected: number, timeout = 30_000) {
+      return poll(
+        async () => {
+          const panes = await env.listPanes()
+          return panes.length === expected ? panes : null
+        },
+        { timeout, label: `${expected} panes` },
+      )
     },
 
-    waitForTerminalCount(expected: number, timeout = 30_000) {
-      const deadline = Date.now() + timeout
-      while (Date.now() < deadline) {
-        // Use listAllTerminals since we can't query by window ID reliably
-        const terms = listTerminals(windowId)
-        if (terms.length >= expected) return terms
-        Bun.sleepSync(500)
-      }
-      throw new Error(`Timed out waiting for ${expected} terminals (${timeout}ms)`)
+    async waitForPaneCountInRange(min: number, max: number, timeout = 30_000) {
+      return poll(
+        async () => {
+          const panes = await env.listPanes()
+          return panes.length >= min && panes.length <= max ? panes : null
+        },
+        { timeout, label: `${min}-${max} panes` },
+      )
     },
 
-    waitForText(text: string, timeout = 30_000) {
-      const deadline = Date.now() + timeout
-      while (Date.now() < deadline) {
-        const screen = env.readScreen({ waitMs: 500 })
-        if (screen.includes(text)) return screen
-        Bun.sleepSync(1500)
-      }
-      throw new Error(`Timed out waiting for text: "${text}" (${timeout}ms)`)
-    },
-
-    waitForClaudeReady(timeout = 90_000) {
-      const deadline = Date.now() + timeout
-      while (Date.now() < deadline) {
-        const screen = env.readScreen({ waitMs: 1000 })
-        if (isClaudeReadyScreen(screen)) return screen
-        Bun.sleepSync(2000)
-      }
-      throw new Error(`Timed out waiting for Claude to be ready (${timeout}ms)`)
-    },
-
-    snapshot(label: string) {
-      saveDebugSnapshot(label, runDir)
-    },
-
-    resetForNextTest() {
-      const terms = listTerminals(windowId)
-      for (const id of terms) {
-        if (id !== leadTerminalId) {
-          closeTerminal(id)
+    async resetForNextTest() {
+      const panes = await env.listPanes()
+      for (const pane of panes.reverse()) {
+        if (pane.id !== leadPaneId) {
+          execSync(`tmux kill-pane -t ${pane.id}`, { encoding: 'utf-8' }).toString()
         }
       }
-      Bun.sleepSync(1000)
-      // Wait for Claude to return to prompt
-      if (launchClaude) {
-        env.waitForClaudeReady(60_000)
-      }
+      await poll(
+        async () => {
+          const content = await captureTmuxPane(leadPaneId)
+          const markers = ['bypass permissions on', 'What would you like to do', 'shift+tab']
+          return markers.some((m) => content.includes(m)) ? true : null
+        },
+        { timeout: 30_000, interval: 2_000, label: 'Claude ready after reset' },
+      )
     },
 
-    teardown() {
-      try {
-        const terms = listTerminals(windowId)
-        for (const id of terms) {
-          try { ghostty(`close terminal id "${id}"`) } catch {}
-        }
-      } catch {
-        // window may already be closed
-      }
+    async teardown() {
+      try { execSync(`tmux kill-session -t ${tmuxSession}`) } catch {}
+      // Also close the Ghostty window
+      try { ghostty(`close front window`) } catch {}
       _env = null
     },
-  }
-
-  // 5. Wait for Claude to be ready
-  if (launchClaude) {
-    env.waitForClaudeReady(90_000)
-    console.log('  [setup] Claude ready')
   }
 
   _env = env

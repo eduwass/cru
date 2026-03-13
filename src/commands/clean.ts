@@ -39,7 +39,7 @@ export const clean = {
         const age = now - stat.mtimeMs
         const dead = !isTeamAlive(name)
 
-        if (c.options.all || age > maxAge || dead) {
+        if (c.options.all || age > maxAge) {
           const days = Math.floor(age / (24 * 60 * 60 * 1000))
           const reason = dead ? 'dead' : days === 0 ? 'today' : `${days}d ago`
           toRemove.push({ name, age: reason })

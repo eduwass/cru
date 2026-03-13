@@ -30,9 +30,8 @@ export function listTeams() {
 
 /** Find which team owns the current terminal window. */
 export function findTeamForCurrentWindow(): string | null {
-  const { getBackend } = require('./terminal')
-  const backend = getBackend()
-  const windowId = backend.paneWindow(backend.currentPane())
+  const { currentPane, paneWindow } = require('./terminal')
+  const windowId = paneWindow(currentPane())
   for (const name of listTeams()) {
     const panes = loadPanes(name)
     if (panes?.windowId === windowId) return name
@@ -53,16 +52,11 @@ export function findTeamWindow(teamName) {
   if (workerPaneIds.length === 0) return null
 
   // Search all panes to find which window contains a worker pane
-  const { getBackend } = require('./terminal')
-  const backend = getBackend()
-  if (backend.name === 'tmux') {
-    const { tmux } = require('./tmux')
-    const lines = tmux('list-panes -a -F "#{window_id} #{pane_id}"').split('\n')
-    for (const line of lines) {
-      const [winId, paneId] = line.split(' ')
-      if (paneId === workerPaneIds[0]) return winId
-    }
+  const { tmux } = require('./tmux')
+  const lines = tmux('list-panes -a -F "#{window_id} #{pane_id}"').split('\n')
+  for (const line of lines) {
+    const [winId, paneId] = line.split(' ')
+    if (paneId === workerPaneIds[0]) return winId
   }
-  // For Ghostty, we can't search pane→window — fall through to null
   return null
 }
