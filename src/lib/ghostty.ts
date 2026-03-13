@@ -59,6 +59,17 @@ export function inputText(terminalId: string, text: string): void {
   ghostty(`input text "${escaped}" to terminal id "${terminalId}"`)
 }
 
+/** Send a key press to a terminal. */
+export function sendKey(terminalId: string, key: string): void {
+  ghostty(`send key "${key}" to terminal id "${terminalId}"`)
+}
+
+/** Send text followed by Enter (like typing a command). */
+export function sendCommand(terminalId: string, text: string): void {
+  inputText(terminalId, text)
+  sendKey(terminalId, 'enter')
+}
+
 /** Focus a terminal and bring its window to front. */
 export function focusTerminal(terminalId: string): void {
   ghostty(`focus terminal id "${terminalId}"`)

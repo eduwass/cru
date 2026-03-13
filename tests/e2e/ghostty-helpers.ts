@@ -85,9 +85,10 @@ export function sendText(terminalId: string, text: string): void {
   ghostty(`input text "${escaped}" to terminal id "${terminalId}"`)
 }
 
-/** Send text followed by a newline (like pressing Enter). */
+/** Send text followed by Enter (like typing a command). */
 export function sendLine(terminalId: string, text: string): void {
-  sendText(terminalId, text + '\n')
+  sendText(terminalId, text)
+  ghostty(`send key "enter" to terminal id "${terminalId}"`)
 }
 
 /** Close a terminal. */
