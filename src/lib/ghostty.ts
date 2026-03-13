@@ -3,7 +3,7 @@ import { execSync } from 'node:child_process'
 /** Run an AppleScript snippet targeting Ghostty. */
 export function ghostty(script: string): string {
   const wrapped = `tell application "Ghostty"\n${script}\nend tell`
-  return execSync(`osascript -e ${JSON.stringify(wrapped)}`, { encoding: 'utf-8' }).trim()
+  return execSync('osascript', { input: wrapped, encoding: 'utf-8' }).trim()
 }
 
 /** Get the focused terminal ID in the frontmost window. */
@@ -16,9 +16,11 @@ export function currentWindow(): string {
   return ghostty('get id of front window')
 }
 
-/** List all terminals in a window with their IDs. */
-export function listTerminals(windowId: string): Array<{ id: string; index: number }> {
-  const ids = ghostty(`get id of every terminal of window id ${windowId}`)
+/** List all terminals in the front window with their IDs. */
+export function listTerminals(_windowId?: string): Array<{ id: string; index: number }> {
+  // Ghostty's window id format doesn't work with `window id` in AppleScript.
+  // Use front window — caller should ensure the right window is focused.
+  const ids = ghostty('get id of every terminal of front window')
   if (!ids) return []
   return ids.split(', ').map((id, i) => ({ id, index: i }))
 }
@@ -32,16 +34,20 @@ export function listAllTerminals(): string[] {
 
 /** Split a terminal and return the new terminal's ID. */
 export function splitTerminal(terminalId: string, direction: 'right' | 'down'): string {
-  // Split creates a new terminal adjacent to the target
-  ghostty(`split terminal id ${terminalId} direction ${direction}`)
-  // After split, the new terminal is focused — get its ID
-  return currentTerminal()
+  // Snapshot terminal IDs before split
+  const before = new Set(listAllTerminals())
+  ghostty(`split terminal id "${terminalId}" direction ${direction}`)
+  // Find the new terminal by diffing
+  const after = listAllTerminals()
+  const newId = after.find((id) => !before.has(id))
+  if (!newId) throw new Error('Split did not create a new terminal')
+  return newId
 }
 
 /** Close a terminal. */
 export function closeTerminal(terminalId: string): void {
   try {
-    ghostty(`close terminal id ${terminalId}`)
+    ghostty(`close terminal id "${terminalId}"`)
   } catch {
     // terminal may already be closed
   }
@@ -50,12 +56,12 @@ export function closeTerminal(terminalId: string): void {
 /** Send paste-style text input to a terminal. */
 export function inputText(terminalId: string, text: string): void {
   const escaped = text.replace(/\\/g, '\\\\').replace(/"/g, '\\"')
-  ghostty(`input text "${escaped}" to terminal id ${terminalId}`)
+  ghostty(`input text "${escaped}" to terminal id "${terminalId}"`)
 }
 
 /** Focus a terminal and bring its window to front. */
 export function focusTerminal(terminalId: string): void {
-  ghostty(`focus terminal id ${terminalId}`)
+  ghostty(`focus terminal id "${terminalId}"`)
 }
 
 /** Get Ghostty version string. */

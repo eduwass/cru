@@ -40,7 +40,7 @@ export function ocr(imagePath: string): string {
 
 function ghostty(script: string): string {
   const wrapped = `tell application "Ghostty"\n${script}\nend tell`
-  return execSync(`osascript -e ${JSON.stringify(wrapped)}`, { encoding: 'utf-8' }).trim()
+  return execSync('osascript', { input: wrapped, encoding: 'utf-8' }).trim()
 }
 
 /** Get Ghostty's frontmost window ID. */
@@ -53,23 +53,36 @@ export function getFocusedTerminal(): string {
   return ghostty('get id of focused terminal of selected tab of front window')
 }
 
-/** List all terminal IDs in a window. */
+/** List all terminal IDs across all windows. */
+export function listAllTerminals(): string[] {
+  const ids = ghostty('get id of every terminal')
+  if (!ids) return []
+  return ids.split(', ')
+}
+
+/** List all terminal IDs in a specific window (by focusing it first). */
 export function listTerminals(windowId: string): string[] {
-  const ids = ghostty(`get id of every terminal of window id ${windowId}`)
+  // Ghostty's window id format (tab-group-...) doesn't work with `window id`.
+  // Use front window — caller should ensure the right window is focused.
+  const ids = ghostty('get id of every terminal of front window')
   if (!ids) return []
   return ids.split(', ')
 }
 
 /** Split a terminal. Returns the new terminal's ID. */
 export function splitTerminal(terminalId: string, direction: 'right' | 'down' = 'right'): string {
-  ghostty(`split terminal id ${terminalId} direction ${direction}`)
-  return getFocusedTerminal()
+  const before = new Set(listAllTerminals())
+  ghostty(`split terminal id "${terminalId}" direction ${direction}`)
+  const after = listAllTerminals()
+  const newId = after.find((id) => !before.has(id))
+  if (!newId) throw new Error('Split did not create a new terminal')
+  return newId
 }
 
 /** Send text to a terminal (paste-style). */
 export function sendText(terminalId: string, text: string): void {
   const escaped = text.replace(/\\/g, '\\\\').replace(/"/g, '\\"')
-  ghostty(`input text "${escaped}" to terminal id ${terminalId}`)
+  ghostty(`input text "${escaped}" to terminal id "${terminalId}"`)
 }
 
 /** Send text followed by a newline (like pressing Enter). */
@@ -80,7 +93,7 @@ export function sendLine(terminalId: string, text: string): void {
 /** Close a terminal. */
 export function closeTerminal(terminalId: string): void {
   try {
-    ghostty(`close terminal id ${terminalId}`)
+    ghostty(`close terminal id "${terminalId}"`)
   } catch {
     // may already be closed
   }
@@ -88,18 +101,42 @@ export function closeTerminal(terminalId: string): void {
 
 /** Focus a terminal. */
 export function focusTerminal(terminalId: string): void {
-  ghostty(`focus terminal id ${terminalId}`)
+  ghostty(`focus terminal id "${terminalId}"`)
 }
 
 // ---------------------------------------------------------------------------
 // Screenshot + OCR
 // ---------------------------------------------------------------------------
 
+const WINDOW_ID_SWIFT = join(HELPERS_DIR, 'ghostty-window-id.swift')
+const WINDOW_ID_BIN = join(HELPERS_DIR, 'ghostty-window-id')
+
+/** Compile the window ID Swift helper if needed. */
+function ensureWindowIdBinary(): void {
+  if (existsSync(WINDOW_ID_BIN)) return
+  const result = spawnSync('swiftc', [WINDOW_ID_SWIFT, '-o', WINDOW_ID_BIN, '-framework', 'CoreGraphics'], {
+    encoding: 'utf-8',
+    timeout: 60_000,
+  })
+  if (result.status !== 0) {
+    throw new Error(`Failed to compile window ID helper: ${result.stderr}`)
+  }
+}
+
+/**
+ * Get the macOS CGWindowID for the largest Ghostty window.
+ * `screencapture -l` requires this integer ID, not Ghostty's AppleScript window ID.
+ */
+export function getCGWindowId(): string {
+  ensureWindowIdBinary()
+  return execSync(WINDOW_ID_BIN, { encoding: 'utf-8', timeout: 5_000 }).trim()
+}
+
 /** Take a screenshot of the Ghostty window. Returns the image path. */
 export function screenshot(outPath?: string): string {
-  const windowId = getWindowId()
+  const cgId = getCGWindowId()
   const path = outPath || `/tmp/cru-ghostty-${Date.now()}.png`
-  execSync(`screencapture -l${windowId} ${JSON.stringify(path)}`, { encoding: 'utf-8' })
+  execSync(`screencapture -l${cgId} ${JSON.stringify(path)}`, { encoding: 'utf-8' })
   return path
 }
 
