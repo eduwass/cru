@@ -30,9 +30,9 @@ export const doctor = {
       checks.push({ name: 'tmux', status: 'ok', detail: getVersion('tmux -V') || 'installed' })
     }
 
-    if (tmuxPath && !inTmux()) {
+    if (tmuxPath && !inTmux() && !inGhostty()) {
       checks.push({ name: 'tmux-session', status: 'fail', detail: 'not inside a tmux session', fix: tmuxCmd })
-    } else if (tmuxPath) {
+    } else if (tmuxPath && inTmux()) {
       checks.push({ name: 'tmux-session', status: 'ok', detail: 'active' })
     }
 

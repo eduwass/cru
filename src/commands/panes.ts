@@ -33,20 +33,26 @@ function runGridGhostty(c) {
 
   const teamName = c.args.team
   const expectedWorkers = c.options.expect
-  const deadline = Date.now() + 60_000
 
   // 1. Find the swarm socket
+  // Only poll if --expect was passed (the skill sets this when workers are spawning).
+  // Otherwise check once and fail fast — the user called this directly.
   let swarm: { socket: string; session: string } | null = null
-  while (Date.now() < deadline) {
+  if (expectedWorkers) {
+    const deadline = Date.now() + 60_000
+    while (Date.now() < deadline) {
+      swarm = findBestSwarm(expectedWorkers)
+      if (swarm) break
+      Bun.sleepSync(200)
+    }
+  } else {
     swarm = findBestSwarm()
-    if (swarm) break
-    Bun.sleepSync(200)
   }
 
   if (!swarm) {
     return c.error({
       code: 'NO_SWARM',
-      message: 'No claude-swarm tmux session found. Workers may not have spawned yet.',
+      message: 'No claude-swarm tmux session found. Is a Claude Code team running?',
     })
   }
 
@@ -227,7 +233,10 @@ function runGrid(c) {
 }
 
 function runClose(c) {
-  const teamName = c.args.team || findTeamForCurrentWindow()
+  let teamName = c.args.team
+  if (!teamName && !inGhostty()) {
+    try { teamName = findTeamForCurrentWindow() } catch {}
+  }
   if (!teamName) return c.error({ code: 'NO_TEAM', message: 'No team specified and none found in current window' })
   const closed: Array<{ name: string; pane: string }> = []
 
@@ -274,7 +283,7 @@ function runClose(c) {
     } catch {}
   }
 
-  if (closed.length === 0) {
+  if (closed.length === 0 && !inGhostty()) {
     try {
       const lead = currentPane()
       const windowId = paneWindow(lead)
@@ -292,6 +301,25 @@ function runClose(c) {
 }
 
 function runList(c) {
+  if (inGhostty()) {
+    const { ghostty, currentTerminal } = require('@/lib/ghostty')
+    const raw = ghostty('get {id, working directory} of every terminal of front window')
+    // AppleScript returns: id1, id2, ..., dir1, dir2, ...
+    const parts = raw.split(', ')
+    const half = parts.length / 2
+    const ids = parts.slice(0, half)
+    const dirs = parts.slice(half)
+    let currentId: string | null = null
+    try { currentId = currentTerminal() } catch {}
+    const panes = ids.map((id, i) => ({
+      id,
+      index: i,
+      cwd: dirs[i] || '',
+      current: id === currentId,
+    }))
+    return { backend: 'ghostty', window: 'front', panes }
+  }
+
   const teamName = c.args.team
   let windowId: string | null = null
 
