@@ -1,8 +1,9 @@
 import { readFileSync, writeFileSync, mkdirSync } from 'node:fs'
 import { join } from 'node:path'
-import { teamsDir } from './teams'
+import { teamsDir } from './paths'
+import { listAllPaneIds } from './tmux'
 
-interface PaneRecord {
+export interface PaneRecord {
   leadPane: string
   windowId: string
   workers: Array<{ name: string; paneId: string; color: string }>
@@ -45,12 +46,12 @@ export function isTeamAlive(teamName: string): boolean {
     }
 
     // For tmux teams, check pane IDs
-    const { listAllPaneIds } = require('./terminal')
     const allPanes = new Set(listAllPaneIds())
 
     if (cruPanes && cruPanes.workers.some((w) => allPanes.has(w.paneId))) return true
 
     // Fallback: check Claude's team config for tmuxPaneId entries
+    // Late require to avoid circular dep (teams.ts imports panes.ts)
     const { readTeamConfig } = require('./teams')
     const config = readTeamConfig(teamName)
     return config.members.some((m: any) => m.tmuxPaneId && allPanes.has(m.tmuxPaneId))

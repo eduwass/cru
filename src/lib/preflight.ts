@@ -1,6 +1,6 @@
 import { hasBinary, inTmux, inGhostty, detectTerminal } from '@/lib/env'
 
-const INSTALL_HINTS = {
+const INSTALL_HINTS: Record<string, Record<string, string>> = {
   tmux: {
     darwin: 'brew install tmux',
     linux: 'sudo apt install tmux  # or your package manager',
@@ -12,7 +12,7 @@ const INSTALL_HINTS = {
   },
 }
 
-function platformHint(tool) {
+function platformHint(tool: string): string {
   const hints = INSTALL_HINTS[tool]
   if (!hints) return ''
   if (hints.all) return hints.all
@@ -20,14 +20,21 @@ function platformHint(tool) {
   return hints[platform] || hints.fallback || ''
 }
 
+interface PreflightError {
+  check: string
+  message: string
+  hint?: string
+}
+
+type Check = 'tmux' | 'tmux-session' | 'claude' | 'pane-session' | 'terminal'
+
 /**
  * Run preflight checks. Returns { ok, errors, terminal }.
- * Checks available: 'tmux', 'tmux-session', 'claude'
  */
-export function preflight(...checks) {
+export function preflight(...checks: Check[]): { ok: boolean; errors: PreflightError[]; terminal: string } {
   const terminal = detectTerminal()
   const tmuxCmd = terminal === 'iterm2' ? 'tmux -CC' : 'tmux'
-  const errors = []
+  const errors: PreflightError[] = []
 
   for (const check of checks) {
     switch (check) {
@@ -53,7 +60,6 @@ export function preflight(...checks) {
 
       case 'pane-session':
         if (inGhostty()) {
-          // Ghostty native mode — check AppleScript support
           if (process.platform !== 'darwin') {
             errors.push({ check: 'pane-session', message: 'Ghostty AppleScript is only available on macOS' })
           } else {
