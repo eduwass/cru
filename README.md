@@ -22,7 +22,7 @@ Agent teams let multiple Claude Code instances work together in parallel — cru
 
 - **Already using tmux?** You're good.
 - **iTerm2?** Use [`tmux -CC`](https://iterm2.com/documentation-tmux-integration.html) for native pane integration.
-- **Ghostty?** Native pane management via [AppleScript](https://ghostty.org/docs/features/applescript) (v1.3.0+) — no tmux needed. Or use tmux inside Ghostty if you prefer.
+- **Ghostty?** Workers still run in tmux (that's how Claude Code spawns agents), but cru mirrors them into native Ghostty splits via [AppleScript](https://ghostty.org/docs/features/applescript) — so you get Ghostty's UI instead of working inside tmux yourself. Requires Ghostty v1.3.0+.
 
 ## Install
 
