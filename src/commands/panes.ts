@@ -33,13 +33,13 @@ function runGridGhostty(c) {
 
   const teamName = c.args.team
   const expectedWorkers = c.options.expect
+  const deadline = Date.now() + 60_000
 
   // 1. Find the swarm socket
   // Only poll if --expect was passed (the skill sets this when workers are spawning).
   // Otherwise check once and fail fast — the user called this directly.
   let swarm: { socket: string; session: string } | null = null
   if (expectedWorkers) {
-    const deadline = Date.now() + 60_000
     while (Date.now() < deadline) {
       swarm = findBestSwarm(expectedWorkers)
       if (swarm) break
