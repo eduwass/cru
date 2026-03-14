@@ -173,7 +173,9 @@ cru init            # creates .cru.json + installs /cru skill
 
 ## Configuration
 
-Create `.cru.json` in your project (or `~/.config/cru/config.json` globally):
+Create `.cru.json` in your project (or `~/.config/cru/config.json` globally).
+
+> **Note:** Layout options apply to tmux pane grids. In Ghostty, splits are managed via AppleScript and these settings are not used.
 
 ```json
 {
