@@ -4,7 +4,6 @@ import { readTeamConfig, findTeamWindow, findTeamForCurrentWindow } from '@/lib/
 import {
   currentPane, paneWindow, getWindowDimensions, listWindowPanes,
   killPane, applyGrid, listPaneDetails,
-  type LayoutConf,
 } from '@/lib/tmux'
 import { computeGrid } from '@/lib/layout'
 import { loadPanes, savePanes } from '@/lib/panes'
@@ -198,7 +197,7 @@ function runGrid(c) {
   if (!leadPane) return c.error({ code: 'NO_LEAD', message: 'Could not identify lead pane' })
   if (workerPanes.length === 0) return c.error({ code: 'NO_WORKERS', message: 'No worker panes found' })
 
-  applyGrid(windowId, leadPane.id, workerPanes.map((p) => p.id), conf.layout as LayoutConf)
+  applyGrid(windowId, leadPane.id, workerPanes.map((p) => p.id), conf.layout)
 
   const N = workerPanes.length
   const { cols, rows } = computeGrid(N, conf.layout)
@@ -236,7 +235,7 @@ function runClose(c) {
   if (cruPanes && cruPanes.workers.length > 0) {
     // Use the right kill method based on how panes were tracked
     const killFn = cruPanes.backend === 'ghostty'
-      ? (id: string) => { try { require('@/lib/ghostty').closeTerminal(id) } catch {} }
+      ? (id: string) => { try { require('@/lib/ghostty').closeTerminal(id) } catch (e) { console.warn(`[close] failed to close Ghostty terminal ${id}: ${e}`) } }
       : (id: string) => killPane(id)
 
     for (const w of cruPanes.workers) {

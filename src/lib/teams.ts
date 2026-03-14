@@ -4,9 +4,6 @@ import { teamsDir } from './paths'
 import { loadPanes } from './panes'
 import { currentPane, paneWindow, tmux } from './tmux'
 
-// Re-export for callers that used teams.teamsDir
-export { teamsDir }
-
 export function readTeamConfig(teamName: string): any {
   const p = join(teamsDir(), teamName, 'config.json')
   return JSON.parse(readFileSync(p, 'utf-8'))

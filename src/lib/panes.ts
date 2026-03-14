@@ -40,7 +40,8 @@ export function isTeamAlive(teamName: string): boolean {
         const { listAllTerminals } = require('./ghostty')
         const allTerminals = new Set(listAllTerminals())
         return cruPanes.workers.some((w) => allTerminals.has(w.paneId))
-      } catch {
+      } catch (e) {
+        console.warn(`[isTeamAlive] failed to query Ghostty for team "${teamName}": ${e}`)
         return false
       }
     }

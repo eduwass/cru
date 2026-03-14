@@ -21,7 +21,7 @@ import { join } from 'node:path'
 import { splitTerminal, sendCommand } from './ghostty'
 
 /** Run a tmux command on a specific socket (or default). */
-function tmux(args: string[], socket?: string): string {
+function tmuxSocket(args: string[], socket?: string): string {
   const fullArgs = socket ? ['-L', socket, ...args] : args
   return execFileSync('tmux', fullArgs, { encoding: 'utf-8', timeout: 3000, stdio: ['pipe', 'pipe', 'pipe'] }).trim()
 }
@@ -60,13 +60,13 @@ export function findLiveSwarms(): Array<{ socket: string; session: string; paneC
     if (pid && !isPidAlive(pid)) continue
 
     try {
-      const sessions = tmux(['list-sessions', '-F', '#{session_name}'], socket)
+      const sessions = tmuxSocket(['list-sessions', '-F', '#{session_name}'], socket)
         .split('\n').filter(Boolean)
         .filter(s => !s.startsWith('view-'))
       if (sessions.length === 0) continue
       const session = sessions[0]
 
-      const allPanes = tmux(['list-panes', '-a', '-F', '#{pane_id}'], socket)
+      const allPanes = tmuxSocket(['list-panes', '-a', '-F', '#{pane_id}'], socket)
         .split('\n').filter(Boolean)
       const uniquePanes = [...new Set(allPanes)]
 
@@ -95,7 +95,7 @@ export function findBestSwarm(expectedWorkers?: number): { socket: string; sessi
 /** Get worker pane IDs from a swarm socket. All panes are workers (lead runs in user's terminal). */
 export function getWorkerPanes(socket: string, _session?: string): string[] {
   try {
-    const allPanes = tmux(['list-panes', '-a', '-F', '#{pane_id}'], socket)
+    const allPanes = tmuxSocket(['list-panes', '-a', '-F', '#{pane_id}'], socket)
       .split('\n').filter(Boolean)
     return [...new Set(allPanes)].sort()
   } catch {
@@ -105,7 +105,7 @@ export function getWorkerPanes(socket: string, _session?: string): string[] {
 
 /** Enable remain-on-exit globally so panes stay visible after worker exits. */
 export function setRemainOnExit(socket: string): void {
-  try { tmux(['set-option', '-g', 'remain-on-exit', 'on'], socket) } catch {}
+  try { tmuxSocket(['set-option', '-g', 'remain-on-exit', 'on'], socket) } catch {}
 }
 
 /**
@@ -125,16 +125,16 @@ export function mirrorSingleWorker(
 
   // Break pane into its own tmux window
   try {
-    tmux(['break-pane', '-s', paneId, '-d', '-n', windowName], socket)
+    tmuxSocket(['break-pane', '-s', paneId, '-d', '-n', windowName], socket)
   } catch (e: any) {
     console.error(`  [mirror] break-pane ${paneId}: ${e.message}`)
   }
 
   // Create a session group member pointing at the worker's window
-  try { tmux(['kill-session', '-t', viewName], socket) } catch {}
-  tmux(['new-session', '-d', '-t', session, '-s', viewName], socket)
-  tmux(['set-option', '-t', viewName, 'status', 'off'], socket)
-  tmux(['select-window', '-t', `${viewName}:${windowName}`], socket)
+  try { tmuxSocket(['kill-session', '-t', viewName], socket) } catch {}
+  tmuxSocket(['new-session', '-d', '-t', session, '-s', viewName], socket)
+  tmuxSocket(['set-option', '-t', viewName, 'status', 'off'], socket)
+  tmuxSocket(['select-window', '-t', `${viewName}:${windowName}`], socket)
 
   // Create Ghostty split
   const newTermId = splitTerminal(splitTarget, splitDirection)

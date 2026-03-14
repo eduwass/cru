@@ -43,17 +43,18 @@ export function writeConfig(path: string, config: CruConfig): void {
 }
 
 export function deepMerge<T extends Record<string, any>>(target: T, source: Record<string, any>): T {
+  const t = target as Record<string, any>
   for (const key of Object.keys(source)) {
     if (
       source[key] &&
       typeof source[key] === 'object' &&
       !Array.isArray(source[key]) &&
-      target[key] &&
-      typeof target[key] === 'object'
+      t[key] &&
+      typeof t[key] === 'object'
     ) {
-      deepMerge(target[key], source[key])
+      deepMerge(t[key], source[key])
     } else {
-      ;(target as any)[key] = source[key]
+      t[key] = source[key]
     }
   }
   return target

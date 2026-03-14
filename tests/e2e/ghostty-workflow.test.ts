@@ -11,7 +11,7 @@
  * Requires: Ghostty v1.3.0+, tmux, claude
  * Run: bun test tests/e2e/ghostty-workflow.test.ts --timeout 600000
  */
-import { execSync } from 'node:child_process'
+import { execSync, execFileSync } from 'node:child_process'
 import { describe, test, expect, beforeAll, afterAll } from 'bun:test'
 import { checkGhosttyPrereqs, createGhosttyTestEnv } from './ghostty-setup'
 import type { TestEnv } from './setup'
@@ -27,9 +27,9 @@ function execSafe(cmd: string): string {
   }
 }
 
-function tmuxSafe(cmd: string): string {
+function tmuxSafe(...args: string[]): string {
   try {
-    return execSync(`tmux ${cmd}`, { encoding: 'utf-8' }).trim()
+    return execFileSync('tmux', args, { encoding: 'utf-8' }).trim()
   } catch {
     return ''
   }
@@ -37,8 +37,8 @@ function tmuxSafe(cmd: string): string {
 
 function ghosttyTerminalCount(): number {
   try {
-    const ids = execSync(
-      'osascript -e \'tell application "Ghostty" to get id of every terminal\'',
+    const ids = execFileSync(
+      'osascript', ['-e', 'tell application "Ghostty" to get id of every terminal'],
       { encoding: 'utf-8' },
     ).trim()
     if (!ids) return 0
@@ -72,10 +72,10 @@ describe('ghostty: /cru full workflow with tmux mirroring', () => {
   afterAll(async () => {
     if (swarmSession) {
       try {
-        const sessions = tmuxSafe('list-sessions -F "#{session_name}"').split('\n')
+        const sessions = tmuxSafe('list-sessions', '-F', '#{session_name}').split('\n')
         for (const s of sessions) {
           if (s.startsWith(swarmSession)) {
-            try { tmuxSafe(`kill-session -t ${s}`) } catch {}
+            try { tmuxSafe('kill-session', '-t', s) } catch {}
           }
         }
       } catch {}
@@ -95,11 +95,11 @@ describe('ghostty: /cru full workflow with tmux mirroring', () => {
       // Wait for a claude-swarm tmux session to appear with worker panes
       await poll(
         async () => {
-          const sessions = tmuxSafe('list-sessions -F "#{session_name}"')
+          const sessions = tmuxSafe('list-sessions', '-F', '#{session_name}')
             .split('\n')
             .filter((s) => s.startsWith('claude-swarm-'))
           for (const s of sessions) {
-            const panes = tmuxSafe(`list-panes -t ${s} -F "#{pane_id}"`).split('\n').filter(Boolean)
+            const panes = tmuxSafe('list-panes', '-t', s, '-F', '#{pane_id}').split('\n').filter(Boolean)
             if (panes.length >= 2) {
               swarmSession = s
               return true
@@ -111,7 +111,7 @@ describe('ghostty: /cru full workflow with tmux mirroring', () => {
       )
 
       expect(swarmSession).not.toBeNull()
-      const paneCount = tmuxSafe(`list-panes -t ${swarmSession} -F "#{pane_id}"`).split('\n').length
+      const paneCount = tmuxSafe('list-panes', '-t', swarmSession!, '-F', '#{pane_id}').split('\n').length
       console.log(`  swarm session: ${swarmSession} (${paneCount} panes)`)
 
       // Find the new team name
@@ -156,12 +156,12 @@ describe('ghostty: /cru full workflow with tmux mirroring', () => {
       if (!swarmSession) return console.log('  skipped: no swarm session')
 
       // Check content of worker panes on the swarm socket
-      const panes = tmuxSafe(`-L ${swarmSession} list-panes -a -F "#{pane_id}"`)
+      const panes = tmuxSafe('-L', swarmSession!, 'list-panes', '-a', '-F', '#{pane_id}')
         .split('\n').filter(Boolean)
       for (const paneId of panes.slice(0, 2)) {
         try {
-          const content = execSync(
-            `tmux -L ${swarmSession} capture-pane -t ${paneId} -p`,
+          const content = execFileSync(
+            'tmux', ['-L', swarmSession!, 'capture-pane', '-t', paneId, '-p'],
             { encoding: 'utf-8' },
           ).trim()
           console.log(`  ${paneId}: ${content.length} chars`)
@@ -200,13 +200,13 @@ describe('ghostty: /cru full workflow with tmux mirroring', () => {
     async () => {
       if (!swarmSession) return console.log('  skipped: no swarm session')
 
-      const sessions = tmuxSafe('list-sessions -F "#{session_name}"')
+      const sessions = tmuxSafe('list-sessions', '-F', '#{session_name}')
         .split('\n')
         .filter((s) => s.includes('-view-'))
       if (sessions.length === 0) return console.log('  skipped: no view sessions found')
 
       const viewSession = sessions[0]
-      const info = tmuxSafe(`display-message -t ${viewSession} -p "#{session_name}:#{window_name}"`)
+      const info = tmuxSafe('display-message', '-t', viewSession, '-p', '#{session_name}:#{window_name}')
       expect(info).toContain(viewSession)
       console.log(`  view session: ${info}`)
     },

@@ -3,7 +3,7 @@ import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { z } from 'incur'
 import { isTeamAlive } from '@/lib/panes'
-import { teamsDir } from '@/lib/teams'
+import { teamsDir } from '@/lib/paths'
 
 export const clean = {
   description: 'Remove old team data from ~/.claude/teams',
@@ -39,7 +39,7 @@ export const clean = {
         const age = now - stat.mtimeMs
         const dead = !isTeamAlive(name)
 
-        if (c.options.all || age > maxAge) {
+        if (c.options.all || age > maxAge || dead) {
           const days = Math.floor(age / (24 * 60 * 60 * 1000))
           const reason = dead ? 'dead' : days === 0 ? 'today' : `${days}d ago`
           toRemove.push({ name, age: reason })

@@ -8,7 +8,7 @@
  * Requires: Ghostty v1.3.0+ with macos-applescript = true, tmux
  * Run: bun test tests/e2e/ghostty-mirror.test.ts --timeout 300000
  */
-import { execSync } from 'node:child_process'
+import { execFileSync } from 'node:child_process'
 import { describe, test, expect, beforeAll, afterAll } from 'bun:test'
 import { checkGhosttyPrereqs, createGhosttyTestEnv } from './ghostty-setup'
 import type { TestEnv } from './setup'
@@ -17,14 +17,14 @@ const TIMEOUT = 120_000
 const SOCKET = 'claude-swarm-test-99999'
 const SESSION = 'main'
 
-function tmux(cmd: string): string {
-  return execSync(`tmux -L ${SOCKET} ${cmd}`, { encoding: 'utf-8' }).trim()
+function tmux(...args: string[]): string {
+  return execFileSync('tmux', ['-L', SOCKET, ...args], { encoding: 'utf-8' }).trim()
 }
 
 function ghosttyTerminalCount(): number {
   try {
-    const ids = execSync(
-      'osascript -e \'tell application "Ghostty" to get id of every terminal\'',
+    const ids = execFileSync(
+      'osascript', ['-e', 'tell application "Ghostty" to get id of every terminal'],
       { encoding: 'utf-8' },
     ).trim()
     if (!ids) return 0
@@ -39,17 +39,17 @@ describe('ghostty: tmux mirror via custom socket', () => {
     env = await createGhosttyTestEnv('ghostty-mirror')
 
     // Create a fake swarm session on a custom socket (like Claude Code does)
-    try { tmux(`kill-server`) } catch {}
-    tmux(`new-session -d -s ${SESSION} -x 80 -y 24`)
-    tmux(`send-keys -t ${SESSION} "echo 'LEAD PANE'" Enter`)
+    try { tmux('kill-server') } catch {}
+    tmux('new-session', '-d', '-s', SESSION, '-x', '80', '-y', '24')
+    tmux('send-keys', '-t', SESSION, "echo 'LEAD PANE'", 'Enter')
 
     // Create "worker" panes
     for (let i = 1; i <= 3; i++) {
-      tmux(`split-window -t ${SESSION} -h`)
-      tmux(`send-keys -t ${SESSION} "echo 'WORKER_${i}_MARKER'" Enter`)
+      tmux('split-window', '-t', SESSION, '-h')
+      tmux('send-keys', '-t', SESSION, `echo 'WORKER_${i}_MARKER'`, 'Enter')
     }
 
-    const panes = tmux(`list-panes -t ${SESSION} -F "#{pane_id}"`).split('\n')
+    const panes = tmux('list-panes', '-t', SESSION, '-F', '#{pane_id}').split('\n')
     console.log(`  [setup] socket: ${SOCKET}, panes: ${panes.join(', ')}`)
   }, 60_000)
 
@@ -101,7 +101,7 @@ describe('ghostty: tmux mirror via custom socket', () => {
     () => {
       Bun.sleepSync(1000)
       try {
-        const content = tmux(`capture-pane -t view-1 -p`)
+        const content = tmux('capture-pane', '-t', 'view-1', '-p')
         expect(content.length).toBeGreaterThan(0)
         console.log(`  captured ${content.length} chars from view-1`)
       } catch (e) {
@@ -115,9 +115,9 @@ describe('ghostty: tmux mirror via custom socket', () => {
     '4. interactivity works through view session',
     () => {
       try {
-        tmux(`send-keys -t view-1 "echo INTERACTIVE_OK" Enter`)
+        tmux('send-keys', '-t', 'view-1', 'echo INTERACTIVE_OK', 'Enter')
         Bun.sleepSync(1000)
-        const content = tmux(`capture-pane -t view-1 -p`)
+        const content = tmux('capture-pane', '-t', 'view-1', '-p')
         expect(content).toContain('INTERACTIVE_OK')
         console.log('  interactivity verified')
       } catch (e) {
@@ -130,7 +130,7 @@ describe('ghostty: tmux mirror via custom socket', () => {
   test(
     '5. no tmux status bar visible',
     () => {
-      const status = tmux(`show-option -t view-1 -v status`)
+      const status = tmux('show-option', '-t', 'view-1', '-v', 'status')
       expect(status).toBe('off')
       console.log('  status bar hidden')
     },
