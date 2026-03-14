@@ -1,13 +1,16 @@
 /**
  * Ghostty smoke test — verify the e2e pipeline works end-to-end.
  *
- * Creates a real Ghostty window, runs cru commands, and asserts on
- * OCR'd screen content. Requires Ghostty running with AppleScript enabled.
+ * Creates a real Ghostty window with tmux, runs cru commands, and asserts
+ * using tmux capture-pane (no OCR). Requires Ghostty with AppleScript enabled.
  *
  * Run: bun test tests/e2e/ghostty-smoke.test.ts
  */
+import { execSync } from 'node:child_process'
 import { describe, test, expect, beforeAll, afterAll } from 'bun:test'
-import { checkGhosttyPrereqs, createGhosttyTestEnv, type GhosttyTestEnv } from './ghostty-setup'
+import { checkGhosttyPrereqs, createGhosttyTestEnv } from './ghostty-setup'
+import type { TestEnv } from './setup'
+import { captureTmuxPane } from './helpers'
 
 describe('ghostty smoke: prerequisites', () => {
   test('ghostty is running and scriptable', () => {
@@ -16,60 +19,53 @@ describe('ghostty smoke: prerequisites', () => {
 })
 
 describe('ghostty smoke: test environment', () => {
-  let env: GhosttyTestEnv
+  let env: TestEnv
 
-  beforeAll(() => {
-    env = createGhosttyTestEnv('ghostty-smoke')
-  }, 30_000)
+  beforeAll(async () => {
+    env = await createGhosttyTestEnv('ghostty-smoke')
+  }, 90_000)
 
-  afterAll(() => {
-    env?.teardown()
+  afterAll(async () => {
+    await env?.teardown()
   })
 
-  test('creates a ghostty window with a lead terminal', () => {
-    expect(env.windowId).toBeTruthy()
-    expect(env.leadTerminalId).toBeTruthy()
-    console.log(`  window: ${env.windowId}, lead: ${env.leadTerminalId}`)
+  test('creates a tmux session with a lead pane', () => {
+    expect(env.tmuxWindow).toBeTruthy()
+    expect(env.leadPaneId).toBeTruthy()
+    console.log(`  window: ${env.tmuxWindow}, lead: ${env.leadPaneId}`)
   })
 
-  test('can read screen via OCR', () => {
-    const screen = env.readScreen({ waitMs: 1000 })
-    expect(screen.length).toBeGreaterThan(0)
-    console.log(`  OCR read ${screen.length} chars`)
+  test('can capture pane content via tmux', async () => {
+    const content = await captureTmuxPane(env.leadPaneId)
+    expect(content.length).toBeGreaterThan(0)
+    console.log(`  captured ${content.length} chars`)
   })
 
-  test('can list terminals in window', () => {
-    const terminals = env.listTerminals()
-    expect(terminals.length).toBe(1) // just the lead
-    console.log(`  terminals: ${terminals.length}`)
+  test('can list tmux panes', async () => {
+    const panes = await env.listPanes()
+    expect(panes.length).toBeGreaterThanOrEqual(1)
+    console.log(`  panes: ${panes.length}`)
   })
 
-  test('can run a command and read output via OCR', () => {
-    env.send('echo CRU_GHOSTTY_E2E_OK')
-    Bun.sleepSync(1000)
-    const screen = env.readScreen({ waitMs: 500 })
-    console.log(`  OCR output (${screen.length} chars): ${screen.slice(0, 200)}`)
-    expect(screen).toContain('CRU_GHOSTTY_E2E_OK')
+  test('can run a command and read output', async () => {
+    // Send via tmux send-keys and capture
+    execSync(`tmux send-keys -t ${env.leadPaneId} 'echo CRU_GHOSTTY_E2E_OK' Enter`)
+    await Bun.sleep(1000)
+    const content = await captureTmuxPane(env.leadPaneId)
+    expect(content).toContain('CRU_GHOSTTY_E2E_OK')
   }, 10_000)
 
-  test('can split panes via AppleScript', () => {
-    // Split the lead terminal to create a worker
-    const { splitTerminal, getFocusedTerminal } = require('./ghostty-helpers')
-    const newTermId = splitTerminal(env.leadTerminalId, 'right')
-    expect(newTermId).toBeTruthy()
+  test('can split and close panes via tmux', async () => {
+    // Split
+    execSync(`tmux split-window -h -t ${env.leadPaneId}`)
+    let panes = await env.listPanes()
+    expect(panes.length).toBe(2)
+    console.log(`  split: ${panes.length} panes`)
 
-    const terminals = env.listTerminals()
-    expect(terminals.length).toBe(2)
-    console.log(`  split created terminal ${newTermId}, total: ${terminals.length}`)
-
-    // Read screen — should show two panes
-    env.snapshot('after-split')
-  })
-
-  test('can close worker panes', () => {
-    env.resetForNextTest()
-    const terminals = env.listTerminals()
-    expect(terminals.length).toBe(1)
-    console.log('  reset back to 1 terminal')
+    // Close worker
+    await env.resetForNextTest()
+    panes = await env.listPanes()
+    expect(panes.length).toBe(1)
+    console.log('  reset back to 1 pane')
   })
 })

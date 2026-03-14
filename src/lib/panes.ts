@@ -1,8 +1,9 @@
 import { readFileSync, writeFileSync, mkdirSync } from 'node:fs'
 import { join } from 'node:path'
-import { teamsDir } from './teams'
+import { teamsDir } from './paths'
+import { listAllPaneIds } from './tmux'
 
-interface PaneRecord {
+export interface PaneRecord {
   leadPane: string
   windowId: string
   workers: Array<{ name: string; paneId: string; color: string }>
@@ -31,19 +32,30 @@ export function loadPanes(teamName: string): PaneRecord | null {
 /** Check if a team has live worker panes. */
 export function isTeamAlive(teamName: string): boolean {
   try {
-    const { getBackend } = require('./terminal')
-    const backend = getBackend()
-    const allPanes = backend.listAllPaneIds()
-    const paneSet = new Set(allPanes)
-
-    // Check cru's own pane tracking first
     const cruPanes = loadPanes(teamName)
-    if (cruPanes && cruPanes.workers.some((w) => paneSet.has(w.paneId))) return true
+
+    // For ghostty-tracked teams, check via AppleScript
+    if (cruPanes?.backend === 'ghostty') {
+      try {
+        const { listAllTerminals } = require('./ghostty')
+        const allTerminals = new Set(listAllTerminals())
+        return cruPanes.workers.some((w) => allTerminals.has(w.paneId))
+      } catch (e) {
+        console.warn(`[isTeamAlive] failed to query Ghostty for team "${teamName}": ${e}`)
+        return false
+      }
+    }
+
+    // For tmux teams, check pane IDs
+    const allPanes = new Set(listAllPaneIds())
+
+    if (cruPanes && cruPanes.workers.some((w) => allPanes.has(w.paneId))) return true
 
     // Fallback: check Claude's team config for tmuxPaneId entries
+    // Late require to avoid circular dep (teams.ts imports panes.ts)
     const { readTeamConfig } = require('./teams')
     const config = readTeamConfig(teamName)
-    return config.members.some((m: any) => m.tmuxPaneId && paneSet.has(m.tmuxPaneId))
+    return config.members.some((m: any) => m.tmuxPaneId && allPanes.has(m.tmuxPaneId))
   } catch {
     return false
   }

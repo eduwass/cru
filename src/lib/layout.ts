@@ -1,4 +1,6 @@
-export function computeGrid(N, conf) {
+import type { LayoutConf } from './tmux'
+
+export function computeGrid(N: number, conf: LayoutConf): { cols: number; rows: number } {
   let cols = Math.ceil(Math.sqrt(N))
   let rows = Math.ceil(N / cols)
 
@@ -13,7 +15,9 @@ export function computeGrid(N, conf) {
   return { cols, rows }
 }
 
-export function buildLayout(W, H, leadId, workerIds, conf) {
+export function buildLayout(
+  W: number, H: number, leadId: number | string, workerIds: (number | string)[], conf: LayoutConf,
+): string {
   const pos = conf.lead.position
   const sizePct = conf.lead.size
   const N = workerIds.length
@@ -48,7 +52,7 @@ export function buildLayout(W, H, leadId, workerIds, conf) {
     isHorizontal,
   })
 
-  let gridLayout
+  let gridLayout: string
   if (rowLayouts.length === 1) {
     gridLayout = rowLayouts[0]
   } else {
@@ -82,15 +86,15 @@ export function buildLayout(W, H, leadId, workerIds, conf) {
 // Internal helpers
 // ---------------------------------------------------------------------------
 
-function distribute(total, count) {
+function distribute(total: number, count: number): number[] {
   const base = Math.floor((total - (count - 1)) / count)
   const sizes = Array(count).fill(base)
   sizes[count - 1] = total - (count - 1) - base * (count - 1)
   return sizes
 }
 
-function reorderColumnFirst(ids, rows, cols) {
-  const out = []
+function reorderColumnFirst<T>(ids: T[], rows: number, cols: number): T[] {
+  const out: T[] = []
   for (let r = 0; r < rows; r++) {
     for (let c = 0; c < cols; c++) {
       const idx = c * rows + r
@@ -100,18 +104,30 @@ function reorderColumnFirst(ids, rows, cols) {
   return out
 }
 
-function buildRows(opts) {
+interface BuildRowsOpts {
+  rows: number
+  cols: number
+  N: number
+  rowSizes: number[]
+  colSizes: number[]
+  gridOrigin: number
+  gridTotal: number
+  ordered: (number | string)[]
+  isHorizontal: boolean
+}
+
+function buildRows(opts: BuildRowsOpts): string[] {
   const {
     rows, cols, N, rowSizes, colSizes,
     gridOrigin, gridTotal, ordered, isHorizontal,
   } = opts
-  const rowLayouts = []
+  const rowLayouts: string[] = []
   let idx = 0
   let primaryOffset = 0
 
   for (let r = 0; r < rows; r++) {
     const rSize = rowSizes[r]
-    const cellParts = []
+    const cellParts: string[] = []
     let secondaryOffset = gridOrigin
 
     for (let c = 0; c < cols; c++) {

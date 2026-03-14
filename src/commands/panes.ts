@@ -1,7 +1,10 @@
 import { z } from 'incur'
 import { loadConfig } from '@/lib/config'
 import { readTeamConfig, findTeamWindow, findTeamForCurrentWindow } from '@/lib/teams'
-import { getBackend } from '@/lib/terminal'
+import {
+  currentPane, paneWindow, getWindowDimensions, listWindowPanes,
+  killPane, applyGrid, listPaneDetails,
+} from '@/lib/tmux'
 import { computeGrid } from '@/lib/layout'
 import { loadPanes, savePanes } from '@/lib/panes'
 import { inGhostty } from '@/lib/env'
@@ -133,7 +136,6 @@ function runGrid(c) {
     return runGridGhostty(c)
   }
 
-  const backend = getBackend()
   const conf = loadConfig()
 
   if (c.options['lead-size'] != null) conf.layout.lead.size = c.options['lead-size']
@@ -161,8 +163,8 @@ function runGrid(c) {
       )
     }
   } else {
-    leadPaneId = backend.currentPane()
-    windowId = backend.paneWindow(leadPaneId)
+    leadPaneId = currentPane()
+    windowId = paneWindow(leadPaneId)
   }
 
   if (!windowId) return c.error({ code: 'NO_WINDOW', message: 'Could not find terminal window' })
@@ -171,13 +173,13 @@ function runGrid(c) {
     const expectedTotal = c.options.expect + 1
     const deadline = Date.now() + 30_000
     while (Date.now() < deadline) {
-      if (backend.listWindowPanes(windowId).length >= expectedTotal) break
+      if (listWindowPanes(windowId).length >= expectedTotal) break
       Bun.sleepSync(500)
     }
   }
 
-  const { w: W, h: H } = backend.getWindowDimensions(windowId)
-  const panes = backend.listWindowPanes(windowId)
+  const { w: W, h: H } = getWindowDimensions(windowId)
+  const panes = listWindowPanes(windowId)
 
   if (panes.length < 2) {
     return c.error({ code: 'NO_WORKERS', message: 'Only one pane in window — nothing to arrange' })
@@ -195,7 +197,7 @@ function runGrid(c) {
   if (!leadPane) return c.error({ code: 'NO_LEAD', message: 'Could not identify lead pane' })
   if (workerPanes.length === 0) return c.error({ code: 'NO_WORKERS', message: 'No worker panes found' })
 
-  backend.applyGrid(windowId, leadPane.id, workerPanes.map((p) => p.id), conf.layout)
+  applyGrid(windowId, leadPane.id, workerPanes.map((p) => p.id), conf.layout)
 
   const N = workerPanes.length
   const { cols, rows } = computeGrid(N, conf.layout)
@@ -225,15 +227,19 @@ function runGrid(c) {
 }
 
 function runClose(c) {
-  const backend = getBackend()
   const teamName = c.args.team || findTeamForCurrentWindow()
   if (!teamName) return c.error({ code: 'NO_TEAM', message: 'No team specified and none found in current window' })
   const closed: Array<{ name: string; pane: string }> = []
 
   const cruPanes = loadPanes(teamName)
   if (cruPanes && cruPanes.workers.length > 0) {
+    // Use the right kill method based on how panes were tracked
+    const killFn = cruPanes.backend === 'ghostty'
+      ? (id: string) => { try { require('@/lib/ghostty').closeTerminal(id) } catch (e) { console.warn(`[close] failed to close Ghostty terminal ${id}: ${e}`) } }
+      : (id: string) => killPane(id)
+
     for (const w of cruPanes.workers) {
-      backend.killPane(w.paneId)
+      killFn(w.paneId)
       closed.push({ name: w.name, pane: w.paneId })
     }
 
@@ -241,16 +247,16 @@ function runClose(c) {
     if (cruPanes.backend === 'ghostty') {
       try {
         const { findSwarmSockets } = require('@/lib/mirror')
-        const { execSync } = require('node:child_process')
+        const { execFileSync } = require('node:child_process')
         for (const socket of findSwarmSockets()) {
           try {
-            const sessions = execSync(
-              `tmux -L ${socket} list-sessions -F "#{session_name}"`,
+            const sessions = execFileSync(
+              'tmux', ['-L', socket, 'list-sessions', '-F', '#{session_name}'],
               { encoding: 'utf-8', timeout: 3000 },
             ).trim().split('\n')
             for (const name of sessions) {
               if (name.startsWith('view-')) {
-                try { execSync(`tmux -L ${socket} kill-session -t ${name}`, { timeout: 3000 }) } catch {}
+                try { execFileSync('tmux', ['-L', socket, 'kill-session', '-t', name], { timeout: 3000 }) } catch {}
               }
             }
           } catch {}
@@ -262,7 +268,7 @@ function runClose(c) {
       const config = readTeamConfig(teamName)
       const workers = config.members.filter((m) => m.tmuxPaneId)
       for (const member of workers) {
-        backend.killPane(member.tmuxPaneId)
+        killPane(member.tmuxPaneId)
         closed.push({ name: member.name, pane: member.tmuxPaneId })
       }
     } catch {}
@@ -270,12 +276,12 @@ function runClose(c) {
 
   if (closed.length === 0) {
     try {
-      const lead = backend.currentPane()
-      const windowId = backend.paneWindow(lead)
-      const panes = backend.listWindowPanes(windowId)
+      const lead = currentPane()
+      const windowId = paneWindow(lead)
+      const panes = listWindowPanes(windowId)
       for (const p of panes) {
         if (p.id !== lead) {
-          backend.killPane(p.id)
+          killPane(p.id)
           closed.push({ name: `pane-${closed.length + 1}`, pane: p.id })
         }
       }
@@ -286,7 +292,6 @@ function runClose(c) {
 }
 
 function runList(c) {
-  const backend = getBackend()
   const teamName = c.args.team
   let windowId: string | null = null
 
@@ -294,14 +299,14 @@ function runList(c) {
     windowId = findTeamWindow(teamName)
   } else {
     try {
-      const lead = backend.currentPane()
-      windowId = backend.paneWindow(lead)
+      const lead = currentPane()
+      windowId = paneWindow(lead)
     } catch {}
   }
 
   if (!windowId) return c.error({ code: 'NO_WINDOW', message: 'Could not find terminal window' })
 
-  const info = backend.listPaneDetails(windowId)
+  const info = listPaneDetails(windowId)
   return { window: windowId, panes: info }
 }
 
