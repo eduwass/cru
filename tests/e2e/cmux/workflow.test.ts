@@ -13,31 +13,15 @@
  * Run: bun test tests/e2e/cmux/workflow.test.ts --timeout 600000
  */
 import { execSync, execFileSync } from 'node:child_process'
-import { existsSync, readdirSync } from 'node:fs'
+import { readdirSync } from 'node:fs'
 import { describe, test, expect, beforeAll, afterAll } from 'bun:test'
 import { createCmuxTestEnv, checkCmuxPrereqs, type CmuxTestEnv } from './setup'
 import { poll } from '../../helpers/common'
-import { cmux, listSurfaceIds, closeSurface } from '../../helpers/cmux'
+import { closeSurface } from '../../helpers/cmux'
+import { findSwarmSockets } from '../../helpers/ghostty'
 
 const TIMEOUT = 300_000
 const TEAMS_DIR = `${process.env.HOME}/.claude/teams`
-
-/** Find claude-swarm tmux sockets in /tmp/tmux-<uid>/. */
-function findSwarmSockets(): string[] {
-  const { readdirSync: rd, statSync } = require('node:fs')
-  const { join } = require('node:path')
-  const uid = process.getuid?.() ?? 501
-  const sockDir = join('/tmp', `tmux-${uid}`)
-  try {
-    return rd(sockDir)
-      .filter((f: string) => f.startsWith('claude-swarm-'))
-      .map((f: string) => ({ name: f, mtime: statSync(join(sockDir, f)).mtimeMs }))
-      .sort((a: any, b: any) => b.mtime - a.mtime)
-      .map((f: any) => f.name)
-  } catch {
-    return []
-  }
-}
 
 function execSafe(cmd: string): string {
   try {

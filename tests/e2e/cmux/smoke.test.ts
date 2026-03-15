@@ -9,7 +9,7 @@
 import { existsSync, readFileSync, unlinkSync } from 'node:fs'
 import { describe, test, expect, beforeAll, afterAll } from 'bun:test'
 import {
-  cmux, isCmuxAvailable, callerSurface, sendLine,
+  cmux, isCmuxAvailable, currentSurface, sendLine,
   listSurfaceIds, readScreen, splitSurface, closeSurface, renameSurface,
 } from '../../helpers/cmux'
 
@@ -24,7 +24,7 @@ describe('cmux smoke', () => {
     if (!isCmuxAvailable()) {
       throw new Error('cmux socket is not responding.')
     }
-    mySurface = callerSurface()
+    mySurface = currentSurface()
     console.log(`  caller surface: ${mySurface}`)
   })
 

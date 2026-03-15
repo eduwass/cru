@@ -135,6 +135,29 @@ function runGridGhostty(c) {
   }
 }
 
+const WORKER_COLORS = ['green', 'blue', 'yellow', 'magenta', 'cyan', 'red']
+
+/** Resolve worker names from team config, falling back to "worker-N". */
+function resolveWorkerNames(teamName: string | undefined, count: number): string[] {
+  if (teamName) {
+    try {
+      const config = readTeamConfig(teamName)
+      const names = config.members?.map((m: any) => m.name) || []
+      if (names.length >= count) return names.slice(0, count)
+    } catch {}
+  }
+  return Array.from({ length: count }, (_, i) => `worker-${i + 1}`)
+}
+
+/** Apply config overrides from CLI options. */
+function applyConfigOverrides(conf: ReturnType<typeof loadConfig>, options: any): void {
+  if (options['lead-size'] != null) conf.layout.lead.size = options['lead-size']
+  if (options['lead-position']) conf.layout.lead.position = options['lead-position']
+  if (options.fill) conf.layout.grid.fill = options.fill
+  if (options['max-cols'] != null) conf.layout.grid.maxCols = options['max-cols']
+  if (options['max-rows'] != null) conf.layout.grid.maxRows = options['max-rows']
+}
+
 function runGridCmux(c) {
   const {
     currentSurface,
@@ -143,100 +166,42 @@ function runGridCmux(c) {
     focusSurface,
     closeSurface,
     renameSurface,
-  } = require('../lib/cmux')
+  } = require('../lib/cmux') as typeof import('../lib/cmux')
 
   const conf = loadConfig()
-  if (c.options['lead-size'] != null) conf.layout.lead.size = c.options['lead-size']
-  if (c.options['lead-position']) conf.layout.lead.position = c.options['lead-position']
-  if (c.options.fill) conf.layout.grid.fill = c.options.fill
-  if (c.options['max-cols'] != null) conf.layout.grid.maxCols = c.options['max-cols']
-  if (c.options['max-rows'] != null) conf.layout.grid.maxRows = c.options['max-rows']
+  applyConfigOverrides(conf, c.options)
 
   const teamName = c.args.team
   const leadSurface = currentSurface()
 
-  // If team already has tracked panes, close old workers first
+  // Close previously-tracked workers (never arbitrary surfaces)
   if (teamName) {
     const existing = loadPanes(teamName)
     if (existing?.backend === 'cmux') {
-      for (const w of existing.workers) {
-        closeSurface(w.paneId)
-      }
+      for (const w of existing.workers) closeSurface(w.paneId)
       Bun.sleepSync(300)
     }
   }
 
-  // Determine worker count: --expect creates new surfaces, otherwise track existing
-  const workerCount = c.options.expect
-  if (!workerCount) {
+  // Determine worker surface IDs
+  let workerIds: string[]
+  if (c.options.expect) {
+    workerIds = buildGrid(leadSurface, c.options.expect, conf.layout)
+  } else {
     const surfaces = listSurfaces()
-    const existingWorkers = surfaces.filter((s: any) => s.id !== leadSurface)
-    if (existingWorkers.length < 1) {
+    workerIds = surfaces.filter((s) => s.id !== leadSurface).map((s) => s.id)
+    if (workerIds.length < 1) {
       return c.error({ code: 'NO_WORKERS', message: 'Only one surface — nothing to arrange. Use --expect N to create workers.' })
     }
   }
 
-  if (workerCount) {
-    // Create new worker surfaces as splits relative to the lead
-    // Never close unrelated surfaces — only previously-tracked workers were cleaned up above
-    const workerSurfaces = buildGrid(leadSurface, workerCount, conf.layout)
-
-    // Read team config for actual worker names (e.g. "researcher", "coder")
-    let memberNames: string[] = []
-    if (teamName) {
-      try {
-        const config = readTeamConfig(teamName)
-        memberNames = config.members?.map((m: any) => m.name) || []
-      } catch {}
-    }
-
-    // Rename surfaces for identification
-    const label = teamName || 'cru'
-    try { renameSurface(leadSurface, `lead @ ${label}`) } catch {}
-    const workers = workerSurfaces.map((id: string, i: number) => {
-      const name = memberNames[i] || `worker-${i + 1}`
-      try { renameSurface(id, `${name} @ ${label}`) } catch {}
-      return { name, paneId: id, color: ['green', 'blue', 'yellow', 'magenta', 'cyan', 'red'][i % 6] }
-    })
-
-    if (teamName) {
-      savePanes(teamName, {
-        leadPane: leadSurface,
-        windowId: leadSurface,
-        backend: 'cmux',
-        createdAt: Date.now(),
-        workers,
-      })
-    }
-
-    focusSurface(leadSurface)
-
-    return {
-      applied: true,
-      backend: 'cmux',
-      lead: { position: conf.layout.lead.position, size: `${conf.layout.lead.size}%` },
-      workers: workers.length,
-    }
-  }
-
-  // No --expect: rearrange existing surfaces — just track them
-  const allSurfaces = listSurfaces()
-  const workerSurfaces = allSurfaces.filter((s: any) => s.id !== leadSurface)
-
-  // Read team config for actual worker names
-  let memberNames: string[] = []
-  if (teamName) {
-    try {
-      const config = readTeamConfig(teamName)
-      memberNames = config.members?.map((m: any) => m.name) || []
-    } catch {}
-  }
-
+  // Label surfaces and build worker records
   const label = teamName || 'cru'
+  const names = resolveWorkerNames(teamName, workerIds.length)
   try { renameSurface(leadSurface, `lead @ ${label}`) } catch {}
-  workerSurfaces.forEach((s: any, i: number) => {
-    const name = memberNames[i] || `worker-${i + 1}`
-    try { renameSurface(s.id, `${name} @ ${label}`) } catch {}
+  const workers = workerIds.map((id, i) => {
+    try { renameSurface(id, `${names[i]} @ ${label}`) } catch {}
+    return { name: names[i], paneId: id, color: WORKER_COLORS[i % WORKER_COLORS.length] }
   })
 
   if (teamName) {
@@ -245,21 +210,16 @@ function runGridCmux(c) {
       windowId: leadSurface,
       backend: 'cmux',
       createdAt: Date.now(),
-      workers: workerSurfaces.map((s: any, i: number) => ({
-        name: `worker-${i + 1}`,
-        paneId: s.id,
-        color: ['green', 'blue', 'yellow', 'magenta', 'cyan', 'red'][i % 6],
-      })),
+      workers,
     })
   }
 
   focusSurface(leadSurface)
-
   return {
     applied: true,
     backend: 'cmux',
     lead: { position: conf.layout.lead.position, size: `${conf.layout.lead.size}%` },
-    workers: workerSurfaces.length,
+    workers: workers.length,
   }
 }
 
@@ -275,12 +235,7 @@ function runGrid(c) {
   }
 
   const conf = loadConfig()
-
-  if (c.options['lead-size'] != null) conf.layout.lead.size = c.options['lead-size']
-  if (c.options['lead-position']) conf.layout.lead.position = c.options['lead-position']
-  if (c.options.fill) conf.layout.grid.fill = c.options.fill
-  if (c.options['max-cols'] != null) conf.layout.grid.maxCols = c.options['max-cols']
-  if (c.options['max-rows'] != null) conf.layout.grid.maxRows = c.options['max-rows']
+  applyConfigOverrides(conf, c.options)
 
   const teamName = c.args.team
   let windowId: string | null = null
@@ -467,11 +422,11 @@ function runClose(c) {
 
 function runList(c) {
   if (inCmux()) {
-    const { currentSurface, listSurfaces, readScreen } = require('../lib/cmux')
+    const { currentSurface, listSurfaces } = require('../lib/cmux')
     let currentId: string | null = null
     try { currentId = currentSurface() } catch {}
     const surfaces = listSurfaces()
-    const panes = surfaces.map((s: any) => ({
+    const panes = surfaces.map((s: { id: string; index: number }) => ({
       id: s.id,
       index: s.index,
       current: s.id === currentId,

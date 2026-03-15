@@ -13,7 +13,7 @@
  */
 import { execSync, execFileSync } from 'node:child_process'
 import { poll, createRunDir } from '../../helpers/common'
-import { cmux, isCmuxAvailable, sendLine, listSurfaceIds, splitSurface, closeSurface } from '../../helpers/cmux'
+import { isCmuxAvailable, currentSurface, sendLine, listSurfaceIds, splitSurface, closeSurface } from '../../helpers/cmux'
 
 export interface CmuxTestEnv {
   leadSurfaceId: string
@@ -62,8 +62,7 @@ export async function createCmuxTestEnv(testName = 'test'): Promise<CmuxTestEnv>
   const surfacesBefore = new Set(listSurfaceIds())
 
   // Get the current lead surface (the one running this test)
-  const identifyInfo = JSON.parse(cmux('identify'))
-  const leadSurfaceId = identifyInfo.caller?.surface_ref || 'surface:1'
+  const leadSurfaceId = currentSurface()
 
   // Create a new split for Claude, explicitly relative to our surface
   const claudeSurfaceId = splitSurface('right', leadSurfaceId)
