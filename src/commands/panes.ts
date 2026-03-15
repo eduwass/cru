@@ -184,7 +184,7 @@ function runGridCmux(c) {
     notify,
     setStatus,
     setProgress,
-    log: cmuxLog,
+    sidebarLog,
     clearStatus,
     clearProgress,
     clearLog,
@@ -232,7 +232,7 @@ function runGridCmux(c) {
   const label = teamName || 'cru'
   setStatus('team', label, { icon: 'person.2.fill', color: '#6366f1' })
   setPhase('spawning', label)
-  cmuxLog(`Swarm found, mirroring workers...`, 'progress')
+  sidebarLog('Swarm found, mirroring workers...', 'progress')
 
   // 2. Incrementally mirror workers into a grid layout
   const conf = loadConfig()
@@ -274,7 +274,7 @@ function runGridCmux(c) {
       mirroredSurfaces.push(result.cmuxSurface)
 
       // Update sidebar progress
-      cmuxLog(`worker-${idx + 1} mirrored`, 'success')
+      sidebarLog(`worker-${idx + 1} mirrored`, 'success')
       setProgress(mirrored.size / totalExpected, `${mirrored.size}/${totalExpected} workers`)
     }
 
@@ -327,7 +327,7 @@ function runGridCmux(c) {
     })
 
     // Start background task progress watcher
-    spawnProgressWatcher(teamName, workers.length)
+    spawnProgressWatcher(teamName)
   }
 
   return {
@@ -534,18 +534,16 @@ function runClose(c) {
 
   // Restore lead pane's original title and clear sidebar
   if (cruPanes?.backend === 'cmux') {
-    try {
-      const { renameSurface, notify, clearStatus, clearProgress, clearPhase, clearLog } = require('../lib/cmux')
-      if (cruPanes.leadOriginalTitle != null) {
-        renameSurface(cruPanes.leadPane, cruPanes.leadOriginalTitle)
-      }
-      notify(`◫ ${teamName}`, `Team shut down — ${closed.length} workers closed`)
-      // Clean slate — remove all cru sidebar state
-      clearStatus('team')
-      clearPhase()
-      clearProgress()
-      clearLog()
-    } catch {}
+    const { renameSurface, notify, clearStatus, clearProgress, clearPhase, clearLog } = require('../lib/cmux')
+    if (cruPanes.leadOriginalTitle != null) {
+      try { renameSurface(cruPanes.leadPane, cruPanes.leadOriginalTitle) } catch {}
+    }
+    try { notify(`◫ ${teamName}`, `Team shut down — ${closed.length} workers closed`) } catch {}
+    // Clean slate — remove all cru sidebar state
+    try { clearStatus('team') } catch {}
+    try { clearPhase() } catch {}
+    try { clearProgress() } catch {}
+    try { clearLog() } catch {}
   }
 
   // Clean up pane tracking file (team data stays for `cru logs` review)

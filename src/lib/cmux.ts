@@ -6,7 +6,8 @@
  *
  * IMPORTANT: All operations pass explicit --surface/--workspace flags
  * so they work regardless of which tab/surface the user has focused.
- * Never rely on the "focused" or "current" surface.
+ * identify() prefers the caller's own surface, falling back to focused
+ * only when env vars are stale (e.g. detached scripts).
  *
  * Surface refs (surface:N) are monotonic — they don't shift when
  * other surfaces are created or destroyed, so they're safe to store.
@@ -224,7 +225,7 @@ export function clearProgress(workspace?: string): void {
 }
 
 /** Append a log entry to the sidebar. */
-export function log(message: string, level: 'info' | 'progress' | 'success' | 'warning' | 'error' = 'info', workspace?: string): void {
+export function sidebarLog(message: string, level: 'info' | 'progress' | 'success' | 'warning' | 'error' = 'info', workspace?: string): void {
   const args = ['log', '--level', level, '--source', 'cru']
   if (workspace) args.push('--workspace', workspace)
   args.push('--', message)
@@ -243,12 +244,11 @@ export function clearLog(workspace?: string): void {
 // ---------------------------------------------------------------------------
 
 /** Set the team lifecycle phase in the sidebar. Uses SF Symbol icons. */
-export function setPhase(phase: 'spawning' | 'working' | 'done' | 'closing', teamName: string, detail?: string, workspace?: string): void {
+export function setPhase(phase: 'spawning' | 'working' | 'done', teamName: string, detail?: string, workspace?: string): void {
   const phases = {
     spawning: { icon: 'circle.dotted', color: '#a78bfa', label: 'spawning' },
     working:  { icon: 'bolt.fill',     color: '#eab308', label: 'working' },
     done:     { icon: 'checkmark.circle.fill', color: '#22c55e', label: 'done' },
-    closing:  { icon: 'xmark.circle',  color: '#ef4444', label: 'closing' },
   }
   const p = phases[phase]
   const value = detail ? `${p.label} — ${detail}` : p.label
@@ -271,7 +271,7 @@ export function clearPhase(workspace?: string): void {
  * Reads ~/.claude/tasks/<team>/*.json to track completed vs total tasks.
  * Exits when all tasks are done or the team is closed.
  */
-export function spawnProgressWatcher(teamName: string, workerCount: number): void {
+export function spawnProgressWatcher(teamName: string): void {
   // Capture the current workspace now so the detached script doesn't rely on env vars
   const ws = currentWorkspace()
 
@@ -281,7 +281,8 @@ export function spawnProgressWatcher(teamName: string, workerCount: number): voi
     const { execFileSync } = require('node:child_process');
     const { homedir } = require('node:os');
 
-    const ws = '${ws}';
+    const ws = process.env.CRU_WORKSPACE;
+    const team = process.env.CRU_TEAM;
     const cmux = (...args) => {
       try { return execFileSync('cmux', [...args, '--workspace', ws], { encoding: 'utf-8', timeout: 5000 }).trim(); }
       catch { return ''; }
@@ -291,8 +292,8 @@ export function spawnProgressWatcher(teamName: string, workerCount: number): voi
       cmux('set-status', 'phase', label, '--icon', icon, '--color', color);
     };
 
-    const tasksDir = join(homedir(), '.claude', 'tasks', '${teamName}');
-    const panesFile = join(homedir(), '.claude', 'teams', '${teamName}', 'cru-panes.json');
+    const tasksDir = join(homedir(), '.claude', 'tasks', team);
+    const panesFile = join(homedir(), '.claude', 'teams', team, 'cru-panes.json');
     let lastCompleted = 0;
     let staleCount = 0;
 
@@ -318,6 +319,7 @@ export function spawnProgressWatcher(teamName: string, workerCount: number): voi
         // First time tasks appear — clear the "N workers ready" progress bar
         if (!tasksStarted) {
           tasksStarted = true;
+          staleCount = 0;
           cmux('clear-progress');
         }
 
@@ -339,26 +341,29 @@ export function spawnProgressWatcher(teamName: string, workerCount: number): voi
           if (completed >= totalTasks) {
             cmux('set-progress', '1', '--label', 'All tasks done');
             cmux('log', '--level', 'success', '--source', 'cru', '--', 'All ' + totalTasks + ' tasks completed');
-            cmux('notify', '--title', '◫ ${teamName}', '--body', 'All tasks completed');
+            cmux('notify', '--title', '◫ ' + team, '--body', 'All tasks completed');
             setPhase('checkmark.circle.fill', '#22c55e', 'done');
-            cmux('set-status', 'team', '${teamName} ✓', '--icon', 'person.2.fill', '--color', '#22c55e');
+            cmux('set-status', 'team', team + ' ✓', '--icon', 'person.2.fill', '--color', '#22c55e');
             break;
           }
+        } else {
+          // Only count staleness once tasks have appeared
+          staleCount++;
         }
       }
 
-      // Give up after 10 min of no changes
-      staleCount++;
-      if (staleCount > 300) break;
+      // Give up after 10 min of no progress (only counted after tasks appear)
+      if (tasksStarted && staleCount > 300) break;
 
       Bun.sleepSync(2000);
     }
   `;
 
-  // Spawn detached so cru can exit
+  // Spawn detached so cru can exit — pass values via env to avoid injection
   Bun.spawn(['bun', '-e', script], {
     detached: true,
     stdio: ['ignore', 'ignore', 'ignore'],
+    env: { ...process.env, CRU_WORKSPACE: ws, CRU_TEAM: teamName },
   }).unref()
 }
 
