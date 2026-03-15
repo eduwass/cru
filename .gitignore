@@ -4,3 +4,4 @@ package-lock.json
 tests/artifacts/
 tests/e2e/ocr
 tests/e2e/ghostty-window-id.vscode/
+.vscode/
