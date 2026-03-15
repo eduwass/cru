@@ -293,6 +293,7 @@ export function spawnProgressWatcher(teamName: string, workerCount: number): voi
     let staleCount = 0;
 
     setPhase('bolt.fill', '#eab308', 'working');
+    let tasksStarted = false;
 
     while (true) {
       // Stop if team was closed (panes file removed)
@@ -310,8 +311,13 @@ export function spawnProgressWatcher(teamName: string, workerCount: number): voi
       } catch {}
 
       if (tasks.length > 0) {
+        // First time tasks appear — clear the "N workers ready" progress bar
+        if (!tasksStarted) {
+          tasksStarted = true;
+          cmux('clear-progress');
+        }
+
         const completed = tasks.filter(t => t.status === 'completed').length;
-        const inProgress = tasks.filter(t => t.status === 'in_progress').length;
         const totalTasks = tasks.length;
 
         if (completed !== lastCompleted) {
@@ -346,6 +352,29 @@ export function spawnProgressWatcher(teamName: string, workerCount: number): voi
   `;
 
   // Spawn detached so cru can exit
+  Bun.spawn(['bun', '-e', script], {
+    detached: true,
+    stdio: ['ignore', 'ignore', 'ignore'],
+  }).unref()
+}
+
+/**
+ * Spawn a background process that clears all sidebar state after a delay.
+ * Used after team close to give the user time to see the "closed" status
+ * before returning to a clean sidebar.
+ */
+export function spawnDelayedCleanup(delaySec = 10): void {
+  const script = `
+    Bun.sleepSync(${delaySec * 1000});
+    const { execFileSync } = require('node:child_process');
+    const cmux = (...args) => {
+      try { execFileSync('cmux', args, { encoding: 'utf-8', timeout: 5000 }); } catch {}
+    };
+    cmux('clear-status', 'team');
+    cmux('clear-status', 'phase');
+    cmux('clear-progress');
+    cmux('clear-log');
+  `;
   Bun.spawn(['bun', '-e', script], {
     detached: true,
     stdio: ['ignore', 'ignore', 'ignore'],
