@@ -2,3 +2,5 @@ node_modules/
 package-lock.json
 .claude/skills/
 tests/artifacts/
+tests/e2e/ocr
+tests/e2e/ghostty-window-id

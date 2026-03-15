@@ -1,12 +1,14 @@
 import { readFileSync, writeFileSync, mkdirSync } from 'node:fs'
 import { join } from 'node:path'
-import { teamsDir } from './teams'
+import { teamsDir } from './paths'
+import { listAllPaneIds } from './tmux'
 
-interface PaneRecord {
+export interface PaneRecord {
   leadPane: string
   windowId: string
   workers: Array<{ name: string; paneId: string; color: string }>
   createdAt: number
+  backend?: 'tmux' | 'ghostty'
 }
 
 function panePath(teamName: string): string {
@@ -27,21 +29,33 @@ export function loadPanes(teamName: string): PaneRecord | null {
   }
 }
 
-/** Check if a team has live worker panes in tmux. */
+/** Check if a team has live worker panes. */
 export function isTeamAlive(teamName: string): boolean {
   try {
-    const { execSync } = require('node:child_process')
-    const allPanes: string = execSync('tmux list-panes -a -F "#{pane_id}"', { encoding: 'utf-8' }).trim()
-    const paneSet = new Set(allPanes.split('\n'))
-
-    // Check cru's own pane tracking first
     const cruPanes = loadPanes(teamName)
-    if (cruPanes && cruPanes.workers.some((w) => paneSet.has(w.paneId))) return true
+
+    // For ghostty-tracked teams, check via AppleScript
+    if (cruPanes?.backend === 'ghostty') {
+      try {
+        const { listAllTerminals } = require('./ghostty')
+        const allTerminals = new Set(listAllTerminals())
+        return cruPanes.workers.some((w) => allTerminals.has(w.paneId))
+      } catch (e) {
+        console.warn(`[isTeamAlive] failed to query Ghostty for team "${teamName}": ${e}`)
+        return false
+      }
+    }
+
+    // For tmux teams, check pane IDs
+    const allPanes = new Set(listAllPaneIds())
+
+    if (cruPanes && cruPanes.workers.some((w) => allPanes.has(w.paneId))) return true
 
     // Fallback: check Claude's team config for tmuxPaneId entries
+    // Late require to avoid circular dep (teams.ts imports panes.ts)
     const { readTeamConfig } = require('./teams')
     const config = readTeamConfig(teamName)
-    return config.members.some((m: any) => m.tmuxPaneId && paneSet.has(m.tmuxPaneId))
+    return config.members.some((m: any) => m.tmuxPaneId && allPanes.has(m.tmuxPaneId))
   } catch {
     return false
   }

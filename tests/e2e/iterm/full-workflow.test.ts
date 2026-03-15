@@ -16,9 +16,22 @@
 import { $ } from 'bun'
 import { describe, test, expect, beforeAll, afterAll } from 'bun:test'
 import { createTestEnv, type TestEnv } from './setup'
-import { saveDebugSnapshot, saveLogs, captureTmuxPane, poll } from './helpers'
+import { saveDebugSnapshot, saveLogs, captureTmuxPane, poll } from '../../helpers/common'
 
 const TIMEOUT = 300_000
+
+/** Build env for subprocess cru calls that need tmux context. */
+async function cruEnv(env: TestEnv) {
+  // Get the real TMUX socket info from the pane
+  const tmuxInfo = await $`tmux display-message -t ${env.leadPaneId} -p '#{socket_path},#{pid},0'`
+    .nothrow().text()
+  return {
+    ...process.env,
+    TERM_PROGRAM: 'iTerm.app',
+    TMUX: tmuxInfo.trim(),
+    TMUX_PANE: env.leadPaneId,
+  }
+}
 
 describe('/cru full workflow', () => {
   let env: TestEnv
@@ -261,6 +274,7 @@ describe('/cru full workflow', () => {
 
       // Run grid with lead on right using team name for pane identification
       const result = await $`bun src/cli.ts panes grid ${teamName} --lead-position right`
+        .env(await cruEnv(env))
         .nothrow()
         .text()
       console.log(`  grid result: ${result.replace(/\n/g, ' ').trim().slice(0, 200)}`)
@@ -300,7 +314,9 @@ describe('/cru full workflow', () => {
   test(
     '7. cru panes close removes all worker panes',
     async () => {
-      await $`bun src/cli.ts panes close ${teamName}`.nothrow()
+      await $`bun src/cli.ts panes close ${teamName}`
+        .env(await cruEnv(env))
+        .nothrow()
 
       // Wait for only lead pane to remain
       const panes = await env.waitForPaneCount(1, 30_000)

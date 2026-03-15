@@ -18,11 +18,11 @@ Agent teams let multiple Claude Code instances work together in parallel — cru
 ╰──────────────────┴────────────────┴────────────────╯
 ```
 
-## tmux setup
+## Terminal setup
 
 - **Already using tmux?** You're good.
 - **iTerm2?** Use [`tmux -CC`](https://iterm2.com/documentation-tmux-integration.html) for native pane integration.
-- **Ghostty?** tmux works fine inside it. Native pane integration (like iTerm2's `tmux -CC`) isn't supported yet, but [AppleScript support is coming](https://github.com/ghostty-org/ghostty/pull/11208).
+- **Ghostty?** Workers still run in tmux (that's how Claude Code spawns agents), but cru mirrors them into native Ghostty splits via [AppleScript](https://ghostty.org/docs/features/applescript) — so you get Ghostty's UI instead of working inside tmux yourself. Requires Ghostty v1.3.0+.
 
 ## Install
 
@@ -95,7 +95,7 @@ cru teams my-team          # show members and pane assignments
 
 ### `panes <action> [team]`
 
-Manage tmux panes — list, apply grid layout, or close workers.
+Manage terminal panes — list, apply grid layout, or close workers.
 
 ```bash
 cru panes list                              # list panes in current window
@@ -173,7 +173,9 @@ cru init            # creates .cru.json + installs /cru skill
 
 ## Configuration
 
-Create `.cru.json` in your project (or `~/.config/cru/config.json` globally):
+Create `.cru.json` in your project (or `~/.config/cru/config.json` globally).
+
+> **Note:** Layout options apply to tmux pane grids. In Ghostty, splits are managed via AppleScript and these settings are not used.
 
 ```json
 {

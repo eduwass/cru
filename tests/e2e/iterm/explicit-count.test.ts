@@ -6,9 +6,21 @@
 import { $ } from 'bun'
 import { describe, test, expect, beforeAll, afterAll } from 'bun:test'
 import { createTestEnv, type TestEnv } from './setup'
-import { saveDebugSnapshot, saveLogs, captureTmuxPane, poll } from './helpers'
+import { saveDebugSnapshot, saveLogs, captureTmuxPane, poll } from '../../helpers/common'
 
 const TIMEOUT = 180_000
+
+async function cruEnv(env: TestEnv) {
+  const { $ } = await import('bun')
+  const tmuxInfo = await $`tmux display-message -t ${env.leadPaneId} -p '#{socket_path},#{pid},0'`
+    .nothrow().text()
+  return {
+    ...process.env,
+    TERM_PROGRAM: 'iTerm.app',
+    TMUX: tmuxInfo.trim(),
+    TMUX_PANE: env.leadPaneId,
+  }
+}
 
 describe('/cru with explicit count', () => {
   let env: TestEnv
@@ -26,7 +38,9 @@ describe('/cru with explicit count', () => {
 
       // Kill worker panes via cru
       if (teamName) {
-        await $`bun src/cli.ts panes close ${teamName}`.nothrow().quiet()
+        await $`bun src/cli.ts panes close ${teamName}`
+          .env(await cruEnv(env))
+          .nothrow().quiet()
         console.log(`  [cleanup] closed team ${teamName}`)
       }
 

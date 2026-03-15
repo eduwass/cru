@@ -18,11 +18,11 @@ import { clean } from '@/commands/clean'
 
 // Commands that require specific preflight checks
 const PREFLIGHT: Record<string, string[]> = {
-  panes: ['tmux'],
+  panes: ['pane-session'],
 }
 
 Cli.create('cru', {
-  description: '◫ Manage tmux layouts for Claude Code agent teams',
+  description: '◫ Manage pane layouts for Claude Code agent teams',
   version: '1.0.0',
 })
   .use(async (c, next) => {

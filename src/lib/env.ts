@@ -32,8 +32,14 @@ export function detectTerminal(): string {
   if (tp === 'iTerm.app') return 'iterm2'
   if (tp === 'Apple_Terminal') return 'terminal'
   if (tp === 'WezTerm') return 'wezterm'
+  if (tp === 'ghostty') return 'ghostty'
   if (tp === 'Alacritty') return 'alacritty'
   if (process.env.ITERM_SESSION_ID) return 'iterm2'
   if (process.env.WT_SESSION) return 'windows-terminal'
   return tp || 'unknown'
+}
+
+/** Check if we're in Ghostty without tmux (native pane mode). */
+export function inGhostty(): boolean {
+  return detectTerminal() === 'ghostty' && !inTmux()
 }

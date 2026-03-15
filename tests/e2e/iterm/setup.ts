@@ -12,7 +12,7 @@
  *   5. env.teardown()     — kill the tmux session (closes the window)
  */
 import { $ } from 'bun'
-import { poll, createRunDir } from './helpers'
+import { poll, createRunDir } from '../../helpers/common'
 
 // ---------------------------------------------------------------------------
 // Types
@@ -92,6 +92,13 @@ export async function createTestEnv(testName = 'test'): Promise<TestEnv> {
   if (_env) return _env
 
   await checkPrereqs()
+
+  // Clean up stale test sessions from previous runs
+  const stale = (await $`tmux list-sessions -F '#{session_name}'`.nothrow().text())
+    .trim().split('\n').filter((s) => s.startsWith('cru-e2e-'))
+  for (const s of stale) {
+    await $`tmux kill-session -t ${s}`.nothrow().quiet()
+  }
 
   const cwd = process.cwd()
   const tmuxSession = `cru-e2e-${Date.now()}`
