@@ -2,8 +2,8 @@ import { readdirSync, rmSync, statSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { z } from 'incur'
-import { isTeamAlive } from '@/lib/panes'
-import { teamsDir } from '@/lib/paths'
+import { isTeamAlive } from '../lib/panes'
+import { teamsDir } from '../lib/paths'
 
 export const clean = {
   description: 'Remove old team data from ~/.claude/teams',

@@ -1,6 +1,6 @@
 import { z } from 'incur'
-import { readTeamConfig, listTeams } from '@/lib/teams'
-import { loadPanes } from '@/lib/panes'
+import { readTeamConfig, listTeams } from '../lib/teams'
+import { loadPanes } from '../lib/panes'
 import { readFileSync, readdirSync, existsSync } from 'node:fs'
 import { join, basename } from 'node:path'
 import { homedir } from 'node:os'

@@ -1,6 +1,6 @@
 import { z } from 'incur'
-import { readTeamConfig, listTeams as getTeams } from '@/lib/teams'
-import { loadPanes, isTeamAlive } from '@/lib/panes'
+import { readTeamConfig, listTeams as getTeams } from '../lib/teams'
+import { loadPanes, isTeamAlive } from '../lib/panes'
 
 function age(createdAt: number): string {
   const ms = Date.now() - createdAt

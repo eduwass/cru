@@ -1,4 +1,4 @@
-import { hasBinary, inTmux, inGhostty, detectTerminal } from '@/lib/env'
+import { hasBinary, inTmux, inGhostty, detectTerminal } from './env'
 
 const INSTALL_HINTS: Record<string, Record<string, string>> = {
   tmux: {

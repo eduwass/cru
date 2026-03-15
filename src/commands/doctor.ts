@@ -1,5 +1,5 @@
 import { z } from 'incur'
-import { hasBinary, getVersion, inTmux, inGhostty, detectTerminal } from '@/lib/env'
+import { hasBinary, getVersion, inTmux, inGhostty, detectTerminal } from '../lib/env'
 
 export const doctor = {
   description: 'Check environment requirements for cru',
@@ -49,7 +49,7 @@ export const doctor = {
         checks.push({ name: 'ghostty', status: 'fail', detail: 'AppleScript only available on macOS' })
       } else {
         try {
-          const { ghosttyVersion, isGhosttyScriptable } = require('@/lib/ghostty')
+          const { ghosttyVersion, isGhosttyScriptable } = require('../lib/ghostty')
           if (isGhosttyScriptable()) {
             const ver = ghosttyVersion() || 'unknown'
             checks.push({ name: 'ghostty', status: 'ok', detail: `v${ver} (AppleScript enabled)` })

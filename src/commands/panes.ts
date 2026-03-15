@@ -1,13 +1,13 @@
 import { z } from 'incur'
-import { loadConfig } from '@/lib/config'
-import { readTeamConfig, findTeamWindow, findTeamForCurrentWindow } from '@/lib/teams'
+import { loadConfig } from '../lib/config'
+import { readTeamConfig, findTeamWindow, findTeamForCurrentWindow } from '../lib/teams'
 import {
   currentPane, paneWindow, getWindowDimensions, listWindowPanes,
   killPane, applyGrid, listPaneDetails,
-} from '@/lib/tmux'
-import { computeGrid } from '@/lib/layout'
-import { loadPanes, savePanes } from '@/lib/panes'
-import { inGhostty } from '@/lib/env'
+} from '../lib/tmux'
+import { computeGrid } from '../lib/layout'
+import { loadPanes, savePanes } from '../lib/panes'
+import { inGhostty } from '../lib/env'
 
 /**
  * Ghostty+tmux mirror flow:
@@ -24,11 +24,11 @@ function runGridGhostty(c) {
     getWorkerPanes,
     mirrorSingleWorker,
     setRemainOnExit,
-  } = require('@/lib/mirror')
+  } = require('../lib/mirror')
   const {
     currentTerminal,
     focusTerminal,
-  } = require('@/lib/ghostty')
+  } = require('../lib/ghostty')
 
   const teamName = c.args.team
   const expectedWorkers = c.options.expect
@@ -243,7 +243,7 @@ function runClose(c) {
   if (cruPanes && cruPanes.workers.length > 0) {
     // Use the right kill method based on how panes were tracked
     const killFn = cruPanes.backend === 'ghostty'
-      ? (id: string) => { try { require('@/lib/ghostty').closeTerminal(id) } catch (e) { console.warn(`[close] failed to close Ghostty terminal ${id}: ${e}`) } }
+      ? (id: string) => { try { require('../lib/ghostty').closeTerminal(id) } catch (e) { console.warn(`[close] failed to close Ghostty terminal ${id}: ${e}`) } }
       : (id: string) => killPane(id)
 
     for (const w of cruPanes.workers) {
@@ -254,7 +254,7 @@ function runClose(c) {
     // If mirrored, also clean up tmux view sessions on the custom socket
     if (cruPanes.backend === 'ghostty') {
       try {
-        const { findSwarmSockets } = require('@/lib/mirror')
+        const { findSwarmSockets } = require('../lib/mirror')
         const { execFileSync } = require('node:child_process')
         for (const socket of findSwarmSockets()) {
           try {
@@ -286,7 +286,7 @@ function runClose(c) {
     // Fallback: close all non-lead Ghostty terminals
     // Uses process-tree-based currentTerminal() — works regardless of focus
     try {
-      const { currentTerminal, listAllTerminals, closeTerminal } = require('@/lib/ghostty')
+      const { currentTerminal, listAllTerminals, closeTerminal } = require('../lib/ghostty')
       const lead = currentTerminal()
       const allTerminals = listAllTerminals()
       for (const id of allTerminals) {
@@ -315,7 +315,7 @@ function runClose(c) {
 
 function runList(c) {
   if (inGhostty()) {
-    const { ghostty, currentTerminal, listAllTerminals } = require('@/lib/ghostty')
+    const { ghostty, currentTerminal, listAllTerminals } = require('../lib/ghostty')
     const allIds = listAllTerminals()
     // Get working directories for all terminals
     let dirs: string[] = []

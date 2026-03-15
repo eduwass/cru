@@ -1,20 +1,20 @@
 #!/usr/bin/env bun
 import { Cli } from 'incur'
-import { preflight } from '@/lib/preflight'
+import { preflight } from './lib/preflight'
 
 // Entity commands
-import { teams } from '@/commands/teams'
-import { panes } from '@/commands/panes'
-import { tasks } from '@/commands/tasks'
+import { teams } from './commands/teams'
+import { panes } from './commands/panes'
+import { tasks } from './commands/tasks'
 
 // Layout
-import { config } from '@/commands/config'
+import { config } from './commands/config'
 
 // Meta
-import { init } from '@/commands/init'
-import { doctor } from '@/commands/doctor'
-import { logs } from '@/commands/logs'
-import { clean } from '@/commands/clean'
+import { init } from './commands/init'
+import { doctor } from './commands/doctor'
+import { logs } from './commands/logs'
+import { clean } from './commands/clean'
 
 // Commands that require specific preflight checks
 const PREFLIGHT: Record<string, string[]> = {

@@ -2,7 +2,7 @@ import { z } from 'incur'
 import { readFileSync, readdirSync, existsSync } from 'node:fs'
 import { join } from 'node:path'
 import { homedir } from 'node:os'
-import { listTeams } from '@/lib/teams'
+import { listTeams } from '../lib/teams'
 
 function listTaskTeams(): string[] {
   const dir = join(homedir(), '.claude', 'tasks')
