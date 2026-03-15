@@ -5,6 +5,7 @@
     "": {
       "name": "tmux-agent-teams",
       "dependencies": {
+        "ajv": "^8.18.0",
         "incur": "^0.2.2",
       },
       "devDependencies": {

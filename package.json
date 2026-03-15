@@ -1,6 +1,6 @@
 {
   "name": "cru-teams",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "description": "◫ Manage terminal layouts for Claude Code agent teams",
   "type": "module",
   "bin": {
@@ -24,6 +24,7 @@
   ],
   "license": "ISC",
   "dependencies": {
+    "ajv": "^8.18.0",
     "incur": "^0.2.2"
   },
   "devDependencies": {
