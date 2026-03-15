@@ -308,8 +308,8 @@ function runGridCmux(c) {
     return { name: names[i], paneId: m.cmuxSurface, color: WORKER_COLORS[i % WORKER_COLORS.length] }
   })
 
-  // 4. Finalize sidebar and focus lead
-  setProgress(1, `${workers.length} workers ready`)
+  // 4. Finalize sidebar and focus lead — clear spawn progress, switch to working
+  clearProgress()
   setStatus('team', `${label} (${workers.length} workers)`, { icon: 'person.2.fill', color: '#22c55e' })
   setPhase('working', label)
   notify(`◫ ${label}`, `Team ready — ${workers.length} workers in grid`)

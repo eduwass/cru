@@ -272,14 +272,18 @@ export function clearPhase(workspace?: string): void {
  * Exits when all tasks are done or the team is closed.
  */
 export function spawnProgressWatcher(teamName: string, workerCount: number): void {
+  // Capture the current workspace now so the detached script doesn't rely on env vars
+  const ws = currentWorkspace()
+
   const script = `
     const { readFileSync, readdirSync, existsSync } = require('node:fs');
     const { join } = require('node:path');
     const { execFileSync } = require('node:child_process');
     const { homedir } = require('node:os');
 
+    const ws = '${ws}';
     const cmux = (...args) => {
-      try { return execFileSync('cmux', args, { encoding: 'utf-8', timeout: 5000 }).trim(); }
+      try { return execFileSync('cmux', [...args, '--workspace', ws], { encoding: 'utf-8', timeout: 5000 }).trim(); }
       catch { return ''; }
     };
 
@@ -364,11 +368,14 @@ export function spawnProgressWatcher(teamName: string, workerCount: number): voi
  * before returning to a clean sidebar.
  */
 export function spawnDelayedCleanup(delaySec = 10): void {
+  const ws = currentWorkspace()
+
   const script = `
     Bun.sleepSync(${delaySec * 1000});
     const { execFileSync } = require('node:child_process');
+    const ws = '${ws}';
     const cmux = (...args) => {
-      try { execFileSync('cmux', args, { encoding: 'utf-8', timeout: 5000 }); } catch {}
+      try { execFileSync('cmux', [...args, '--workspace', ws], { encoding: 'utf-8', timeout: 5000 }); } catch {}
     };
     cmux('clear-status', 'team');
     cmux('clear-status', 'phase');
