@@ -22,7 +22,12 @@ describe('ghostty smoke', () => {
   })
 
   afterAll(() => {
-    try { ghostty('close front window') } catch {}
+    try {
+      const terms = ghosttyFrontWindowTerminals()
+      for (const id of terms) {
+        try { ghostty(`close terminal id "${id}"`) } catch {}
+      }
+    } catch {}
   })
 
   test('ghostty is running and scriptable', () => {
@@ -70,7 +75,7 @@ describe('ghostty smoke', () => {
     await Bun.sleep(2000)
     if (existsSync(marker)) {
       const output = require('fs').readFileSync(marker, 'utf-8')
-      expect(output).toContain('"ok":true')
+      expect(output).toContain('"ok": true')
       unlinkSync(marker)
     }
   })

@@ -125,7 +125,12 @@ export async function createGhosttyTestEnv(testName = 'test'): Promise<GhosttyTe
     },
 
     async teardown() {
-      try { ghostty('close front window') } catch {}
+      try {
+        const terms = ghosttyFrontWindowTerminals()
+        for (const id of terms) {
+          try { ghostty(`close terminal id "${id}"`) } catch {}
+        }
+      } catch {}
       _env = null
     },
   }
