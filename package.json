@@ -14,7 +14,10 @@
     "dev": "bun src/cli.ts",
     "test": "bun test tests/unit/",
     "test:e2e": "bun test tests/e2e/ --timeout 120000",
-    "release": "npm publish --access public"
+    "release": "bun release.ts",
+    "release:patch": "bun release.ts patch",
+    "release:minor": "bun release.ts minor",
+    "release:major": "bun release.ts major"
   },
   "keywords": [
     "claude-code",
