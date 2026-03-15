@@ -260,7 +260,7 @@ describe('/cru full workflow', () => {
       await saveDebugSnapshot(env.tmuxWindow, '6a-before-layout-change', env.runDir)
 
       // Run grid with lead on right using team name for pane identification
-      const result = await $`bun src/cli.ts panes grid ${teamName} --lead-position right`
+      const result = await $`TERM_PROGRAM=iTerm.app bun src/cli.ts panes grid ${teamName} --lead-position right`
         .nothrow()
         .text()
       console.log(`  grid result: ${result.replace(/\n/g, ' ').trim().slice(0, 200)}`)
@@ -300,7 +300,7 @@ describe('/cru full workflow', () => {
   test(
     '7. cru panes close removes all worker panes',
     async () => {
-      await $`bun src/cli.ts panes close ${teamName}`.nothrow()
+      await $`TERM_PROGRAM=iTerm.app bun src/cli.ts panes close ${teamName}`.nothrow()
 
       // Wait for only lead pane to remain
       const panes = await env.waitForPaneCount(1, 30_000)
