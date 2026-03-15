@@ -181,7 +181,9 @@ export async function createTestEnv(testName = 'test'): Promise<TestEnv> {
 
     async send(text: string) {
       await waitForClaudeReady(sessionId, 60_000)
-      await $`it2 session send-text ${sessionId} --skip-confirm ${text}`
+      // Use tmux send-keys instead of it2 send-text — more reliable
+      // for Claude's TUI which may not process pasted text correctly
+      await $`tmux send-keys -t ${leadPaneId} ${text} Enter`
     },
 
     async captureScreen(sid?: string) {
