@@ -40,11 +40,13 @@ describe('cmux smoke', () => {
 
   test('can identify current workspace and surface', () => {
     const info = JSON.parse(cmux('identify'))
-    expect(info.caller).toBeDefined()
-    expect(info.caller.workspace_ref).toMatch(/^workspace:\d+$/)
-    expect(info.caller.surface_ref).toMatch(/^surface:\d+$/)
-    expect(info.caller.surface_ref).toBe(mySurface)
-    console.log(`  workspace: ${info.caller.workspace_ref}, surface: ${info.caller.surface_ref}`)
+    // caller may be null if env vars are stale; fall back to focused
+    const ctx = info.caller || info.focused
+    expect(ctx).toBeDefined()
+    expect(ctx.workspace_ref).toMatch(/^workspace:\d+$/)
+    expect(ctx.surface_ref).toMatch(/^surface:\d+$/)
+    expect(ctx.surface_ref).toBe(mySurface)
+    console.log(`  workspace: ${ctx.workspace_ref}, surface: ${ctx.surface_ref}`)
   })
 
   test('can list surfaces', () => {

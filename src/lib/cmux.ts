@@ -6,7 +6,8 @@
  *
  * IMPORTANT: All operations pass explicit --surface/--workspace flags
  * so they work regardless of which tab/surface the user has focused.
- * Never rely on the "focused" or "current" surface.
+ * identify() prefers the caller's own surface, falling back to focused
+ * only when env vars are stale (e.g. detached scripts).
  *
  * Surface refs (surface:N) are monotonic — they don't shift when
  * other surfaces are created or destroyed, so they're safe to store.
@@ -65,9 +66,10 @@ export function cmuxVersion(): string | null {
  */
 export function identify(): { surface: string; workspace: string } {
   const info = JSON.parse(cmux('identify'))
-  const surface = info.caller?.surface_ref
-  const workspace = info.caller?.workspace_ref
-  if (!surface) throw new Error('cmux identify did not return caller surface_ref')
+  // Prefer caller (the process's own surface), fall back to focused surface
+  const surface = info.caller?.surface_ref || info.focused?.surface_ref
+  const workspace = info.caller?.workspace_ref || info.focused?.workspace_ref
+  if (!surface) throw new Error('cmux identify did not return a surface_ref')
   return { surface, workspace: workspace || 'workspace:1' }
 }
 
@@ -177,6 +179,192 @@ export function readScreen(surfaceId: string, lines?: number): string {
   const args = ['read-screen', '--surface', surfaceId]
   if (lines) args.push('--lines', String(lines))
   return cmux(...args)
+}
+
+// ---------------------------------------------------------------------------
+// Notifications & Sidebar
+// ---------------------------------------------------------------------------
+
+/** Send a desktop notification. */
+export function notify(title: string, body?: string, workspace?: string): void {
+  const args = ['notify', '--title', title]
+  if (body) args.push('--body', body)
+  if (workspace) args.push('--workspace', workspace)
+  try { cmux(...args) } catch {}
+}
+
+/** Set a status key in the sidebar. */
+export function setStatus(key: string, value: string, opts?: { icon?: string; color?: string; workspace?: string }): void {
+  const args = ['set-status', key, value]
+  if (opts?.icon) args.push('--icon', opts.icon)
+  if (opts?.color) args.push('--color', opts.color)
+  if (opts?.workspace) args.push('--workspace', opts.workspace)
+  try { cmux(...args) } catch {}
+}
+
+/** Clear a status key from the sidebar. */
+export function clearStatus(key: string, workspace?: string): void {
+  const args = ['clear-status', key]
+  if (workspace) args.push('--workspace', workspace)
+  try { cmux(...args) } catch {}
+}
+
+/** Set a progress bar in the sidebar (0.0 – 1.0). */
+export function setProgress(value: number, label?: string, workspace?: string): void {
+  const args = ['set-progress', String(Math.min(1, Math.max(0, value)))]
+  if (label) args.push('--label', label)
+  if (workspace) args.push('--workspace', workspace)
+  try { cmux(...args) } catch {}
+}
+
+/** Clear the sidebar progress bar. */
+export function clearProgress(workspace?: string): void {
+  const args = ['clear-progress']
+  if (workspace) args.push('--workspace', workspace)
+  try { cmux(...args) } catch {}
+}
+
+/** Append a log entry to the sidebar. */
+export function sidebarLog(message: string, level: 'info' | 'progress' | 'success' | 'warning' | 'error' = 'info', workspace?: string): void {
+  const args = ['log', '--level', level, '--source', 'cru']
+  if (workspace) args.push('--workspace', workspace)
+  args.push('--', message)
+  try { cmux(...args) } catch {}
+}
+
+/** Clear all sidebar log entries. */
+export function clearLog(workspace?: string): void {
+  const args = ['clear-log']
+  if (workspace) args.push('--workspace', workspace)
+  try { cmux(...args) } catch {}
+}
+
+// ---------------------------------------------------------------------------
+// Lifecycle status pills
+// ---------------------------------------------------------------------------
+
+/** Set the team lifecycle phase in the sidebar. Uses SF Symbol icons. */
+export function setPhase(phase: 'spawning' | 'working' | 'done', teamName: string, detail?: string, workspace?: string): void {
+  const phases = {
+    spawning: { icon: 'circle.dotted', color: '#a78bfa', label: 'spawning' },
+    working:  { icon: 'bolt.fill',     color: '#eab308', label: 'working' },
+    done:     { icon: 'checkmark.circle.fill', color: '#22c55e', label: 'done' },
+  }
+  const p = phases[phase]
+  const value = detail ? `${p.label} — ${detail}` : p.label
+  setStatus('phase', value, { icon: p.icon, color: p.color, workspace })
+}
+
+/** Clear the phase pill. */
+export function clearPhase(workspace?: string): void {
+  clearStatus('phase', workspace)
+}
+
+// ---------------------------------------------------------------------------
+// Progress watcher
+// ---------------------------------------------------------------------------
+
+/**
+ * Spawn a background process that polls Claude Code's task system
+ * and updates the cmux sidebar with worker progress.
+ *
+ * Reads ~/.claude/tasks/<team>/*.json to track completed vs total tasks.
+ * Exits when all tasks are done or the team is closed.
+ */
+export function spawnProgressWatcher(teamName: string): void {
+  // Capture the current workspace now so the detached script doesn't rely on env vars
+  const ws = currentWorkspace()
+
+  const script = `
+    const { readFileSync, readdirSync, existsSync } = require('node:fs');
+    const { join } = require('node:path');
+    const { execFileSync } = require('node:child_process');
+    const { homedir } = require('node:os');
+
+    const ws = process.env.CRU_WORKSPACE;
+    const team = process.env.CRU_TEAM;
+    const cmux = (...args) => {
+      try { return execFileSync('cmux', [...args, '--workspace', ws], { encoding: 'utf-8', timeout: 5000 }).trim(); }
+      catch { return ''; }
+    };
+
+    const setPhase = (icon, color, label) => {
+      cmux('set-status', 'phase', label, '--icon', icon, '--color', color);
+    };
+
+    const tasksDir = join(homedir(), '.claude', 'tasks', team);
+    const panesFile = join(homedir(), '.claude', 'teams', team, 'cru-panes.json');
+    let lastCompleted = 0;
+    let staleCount = 0;
+
+    setPhase('bolt.fill', '#eab308', 'working');
+    let tasksStarted = false;
+
+    while (true) {
+      // Stop if team was closed (panes file removed)
+      if (!existsSync(panesFile)) break;
+
+      // Read task files
+      let tasks = [];
+      try {
+        if (existsSync(tasksDir)) {
+          for (const f of readdirSync(tasksDir)) {
+            if (!f.endsWith('.json')) continue;
+            try { tasks.push(JSON.parse(readFileSync(join(tasksDir, f), 'utf-8'))); } catch {}
+          }
+        }
+      } catch {}
+
+      if (tasks.length > 0) {
+        // First time tasks appear — clear the "N workers ready" progress bar
+        if (!tasksStarted) {
+          tasksStarted = true;
+          staleCount = 0;
+          cmux('clear-progress');
+        }
+
+        const completed = tasks.filter(t => t.status === 'completed').length;
+        const totalTasks = tasks.length;
+
+        if (completed !== lastCompleted) {
+          lastCompleted = completed;
+          staleCount = 0;
+
+          const ratio = totalTasks > 0 ? completed / totalTasks : 0;
+          cmux('set-progress', String(ratio), '--label', completed + '/' + totalTasks + ' tasks done');
+
+          if (completed > 0 && completed < totalTasks) {
+            cmux('log', '--level', 'progress', '--source', 'cru', '--', completed + '/' + totalTasks + ' tasks completed');
+            setPhase('bolt.fill', '#eab308', 'working — ' + completed + '/' + totalTasks + ' done');
+          }
+
+          if (completed >= totalTasks) {
+            cmux('set-progress', '1', '--label', 'All tasks done');
+            cmux('log', '--level', 'success', '--source', 'cru', '--', 'All ' + totalTasks + ' tasks completed');
+            cmux('notify', '--title', '◫ ' + team, '--body', 'All tasks completed');
+            setPhase('checkmark.circle.fill', '#22c55e', 'done');
+            cmux('set-status', 'team', team + ' ✓', '--icon', 'person.2.fill', '--color', '#22c55e');
+            break;
+          }
+        } else {
+          // Only count staleness once tasks have appeared
+          staleCount++;
+        }
+      }
+
+      // Give up after 10 min of no progress (only counted after tasks appear)
+      if (tasksStarted && staleCount > 300) break;
+
+      Bun.sleepSync(2000);
+    }
+  `;
+
+  // Spawn detached so cru can exit — pass values via env to avoid injection
+  Bun.spawn(['bun', '-e', script], {
+    detached: true,
+    stdio: ['ignore', 'ignore', 'ignore'],
+    env: { ...process.env, CRU_WORKSPACE: ws, CRU_TEAM: teamName },
+  }).unref()
 }
 
 // ---------------------------------------------------------------------------
