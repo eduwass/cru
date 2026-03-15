@@ -7,13 +7,16 @@
 import { existsSync, unlinkSync } from 'node:fs'
 import { describe, test, expect, beforeAll, afterAll } from 'bun:test'
 import { checkGhosttyPrereqs } from './setup'
-import { ghostty, sendLine, ghosttyFrontWindowTerminals } from '../../helpers/ghostty'
+import { ghostty, sendLine, ghosttyAllTerminals } from '../../helpers/ghostty'
 
 describe('ghostty smoke', () => {
   let terminalId: string
+  let terminalsBefore: Set<string>
 
   beforeAll(() => {
     checkGhosttyPrereqs()
+    // Snapshot before creating test window
+    terminalsBefore = new Set(ghosttyAllTerminals())
     ghostty('activate')
     Bun.sleepSync(300)
     ghostty('new window')
@@ -22,13 +25,17 @@ describe('ghostty smoke', () => {
   })
 
   afterAll(() => {
-    try {
-      const terms = ghosttyFrontWindowTerminals()
-      for (const id of terms) {
-        try { ghostty(`close terminal id "${id}"`) } catch {}
-      }
-    } catch {}
+    // Close only test terminals
+    const testTerminals = ghosttyAllTerminals().filter((id) => !terminalsBefore.has(id))
+    for (const id of testTerminals) {
+      try { ghostty(`close terminal id "${id}"`) } catch {}
+    }
   })
+
+  /** Get terminal IDs that belong to this test. */
+  function testTerminals(): string[] {
+    return ghosttyAllTerminals().filter((id) => !terminalsBefore.has(id))
+  }
 
   test('ghostty is running and scriptable', () => {
     const name = ghostty('get name')
@@ -50,13 +57,13 @@ describe('ghostty smoke', () => {
   })
 
   test('can split and close terminals', () => {
-    const before = ghosttyFrontWindowTerminals()
+    const before = testTerminals()
     expect(before.length).toBe(1)
 
     // Split
     ghostty(`split terminal id "${terminalId}" direction right`)
     Bun.sleepSync(500)
-    const afterSplit = ghosttyFrontWindowTerminals()
+    const afterSplit = testTerminals()
     expect(afterSplit.length).toBe(2)
     console.log(`  split: ${before.length} → ${afterSplit.length}`)
 
@@ -64,7 +71,7 @@ describe('ghostty smoke', () => {
     const newTerm = afterSplit.find((id) => !before.includes(id))!
     ghostty(`close terminal id "${newTerm}"`)
     Bun.sleepSync(500)
-    const afterClose = ghosttyFrontWindowTerminals()
+    const afterClose = testTerminals()
     expect(afterClose.length).toBe(1)
     console.log(`  close: ${afterSplit.length} → ${afterClose.length}`)
   })

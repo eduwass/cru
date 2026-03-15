@@ -27,7 +27,6 @@ function runGridGhostty(c) {
   } = require('@/lib/mirror')
   const {
     currentTerminal,
-    currentWindow,
     focusTerminal,
   } = require('@/lib/ghostty')
 
@@ -112,7 +111,7 @@ function runGridGhostty(c) {
     const mirrors = [...mirrored.entries()]
     savePanes(teamName, {
       leadPane: leadTerminalId,
-      windowId: currentWindow(),
+      windowId: leadTerminalId, // Ghostty doesn't have tmux-style window IDs; use lead terminal as key
       backend: 'ghostty',
       createdAt: Date.now(),
       workers: mirrors.map(([, m], i) => ({
@@ -283,7 +282,21 @@ function runClose(c) {
     } catch {}
   }
 
-  if (closed.length === 0 && !inGhostty()) {
+  if (closed.length === 0 && inGhostty()) {
+    // Fallback: close all non-lead Ghostty terminals
+    // Uses process-tree-based currentTerminal() — works regardless of focus
+    try {
+      const { currentTerminal, listAllTerminals, closeTerminal } = require('@/lib/ghostty')
+      const lead = currentTerminal()
+      const allTerminals = listAllTerminals()
+      for (const id of allTerminals) {
+        if (id !== lead) {
+          closeTerminal(id)
+          closed.push({ name: `pane-${closed.length + 1}`, pane: id })
+        }
+      }
+    } catch {}
+  } else if (closed.length === 0) {
     try {
       const lead = currentPane()
       const windowId = paneWindow(lead)
@@ -302,22 +315,23 @@ function runClose(c) {
 
 function runList(c) {
   if (inGhostty()) {
-    const { ghostty, currentTerminal } = require('@/lib/ghostty')
-    const raw = ghostty('get {id, working directory} of every terminal of front window')
-    // AppleScript returns: id1, id2, ..., dir1, dir2, ...
-    const parts = raw.split(', ')
-    const half = parts.length / 2
-    const ids = parts.slice(0, half)
-    const dirs = parts.slice(half)
+    const { ghostty, currentTerminal, listAllTerminals } = require('@/lib/ghostty')
+    const allIds = listAllTerminals()
+    // Get working directories for all terminals
+    let dirs: string[] = []
+    try {
+      const raw = ghostty('get working directory of every terminal')
+      dirs = raw.split(', ')
+    } catch {}
     let currentId: string | null = null
     try { currentId = currentTerminal() } catch {}
-    const panes = ids.map((id, i) => ({
+    const panes = allIds.map((id: string, i: number) => ({
       id,
       index: i,
       cwd: dirs[i] || '',
       current: id === currentId,
     }))
-    return { backend: 'ghostty', window: 'front', panes }
+    return { backend: 'ghostty', panes }
   }
 
   const teamName = c.args.team

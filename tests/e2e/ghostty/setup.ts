@@ -5,15 +5,19 @@
  * This tests the real native Ghostty flow where workers spawn in
  * headless claude-swarm tmux sessions and get mirrored into Ghostty splits.
  *
+ * Terminal tracking: snapshots all terminal IDs before creating the test
+ * window, then identifies test terminals by diffing. This means you can
+ * switch windows/tabs during the test without breaking assertions.
+ *
  * Lifecycle:
  *   1. checkGhosttyPrereqs() — verify Ghostty, claude, bun
  *   2. createGhosttyTestEnv() — new tab → claude, wait for ready
  *   3. ... run tests ...
- *   4. env.teardown() — close the Ghostty window
+ *   4. env.teardown() — close test terminals
  */
 import { execSync, execFileSync } from 'node:child_process'
 import { poll, createRunDir } from '../../helpers/common'
-import { ghostty, sendLine, ghosttyFrontWindowTerminals } from '../../helpers/ghostty'
+import { ghostty, sendLine, ghosttyAllTerminals } from '../../helpers/ghostty'
 
 export interface GhosttyTestEnv {
   leadTerminalId: string
@@ -22,9 +26,9 @@ export interface GhosttyTestEnv {
   send: (text: string) => Promise<void>
   /** Wait for Claude to be running (via process detection). */
   waitForClaudeReady: (timeout?: number) => Promise<void>
-  /** Count terminals in the test window. */
+  /** Count terminals belonging to this test (not other windows). */
   terminalCount: () => number
-  /** Get terminal IDs in the test window. */
+  /** Get terminal IDs belonging to this test. */
   terminalIds: () => string[]
   /** Tear down the test environment. */
   teardown: () => Promise<void>
@@ -60,6 +64,9 @@ export async function createGhosttyTestEnv(testName = 'test'): Promise<GhosttyTe
   const cwd = process.cwd()
   const runDir = createRunDir(testName)
 
+  // Snapshot all terminal IDs BEFORE creating the test window
+  const terminalsBefore = new Set(ghosttyAllTerminals())
+
   // 1. Open a new Ghostty window
   ghostty('activate')
   await Bun.sleep(300)
@@ -83,7 +90,6 @@ export async function createGhosttyTestEnv(testName = 'test'): Promise<GhosttyTe
   await poll(
     async () => {
       try {
-        // Look for a claude process that's a descendant of processes on our TTY
         const result = execFileSync('pgrep', ['-f', 'claude.*dangerously'], { encoding: 'utf-8' }).trim()
         return result ? true : null
       } catch { return null }
@@ -94,12 +100,17 @@ export async function createGhosttyTestEnv(testName = 'test'): Promise<GhosttyTe
   await Bun.sleep(5_000)
   console.log('  [setup] Claude ready')
 
+  /** Get terminal IDs that belong to this test (created after our snapshot). */
+  function getTestTerminals(): string[] {
+    const all = ghosttyAllTerminals()
+    return all.filter((id) => !terminalsBefore.has(id))
+  }
+
   const env: GhosttyTestEnv = {
     leadTerminalId,
     runDir,
 
     async send(text: string) {
-      // Brief pause to let Claude settle
       await Bun.sleep(1_000)
       sendLine(leadTerminalId, text)
     },
@@ -117,20 +128,18 @@ export async function createGhosttyTestEnv(testName = 'test'): Promise<GhosttyTe
     },
 
     terminalCount() {
-      return ghosttyFrontWindowTerminals().length
+      return getTestTerminals().length
     },
 
     terminalIds() {
-      return ghosttyFrontWindowTerminals()
+      return getTestTerminals()
     },
 
     async teardown() {
-      try {
-        const terms = ghosttyFrontWindowTerminals()
-        for (const id of terms) {
-          try { ghostty(`close terminal id "${id}"`) } catch {}
-        }
-      } catch {}
+      // Close only test terminals, not user's other windows
+      for (const id of getTestTerminals()) {
+        try { ghostty(`close terminal id "${id}"`) } catch {}
+      }
       _env = null
     },
   }

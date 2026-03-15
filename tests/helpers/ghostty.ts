@@ -51,6 +51,18 @@ export function ghosttyFrontWindowTerminals(): string[] {
   } catch { return [] }
 }
 
+/** Get ALL terminal IDs across all windows. */
+export function ghosttyAllTerminals(): string[] {
+  try {
+    const ids = execFileSync(
+      'osascript', ['-e', 'tell application "Ghostty" to get id of every terminal'],
+      { encoding: 'utf-8' },
+    ).trim()
+    if (!ids) return []
+    return ids.split(', ')
+  } catch { return [] }
+}
+
 /** Take a screenshot of the Ghostty front window. */
 export async function screenshot(path: string): Promise<void> {
   const { $ } = await import('bun')

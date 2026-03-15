@@ -33,7 +33,7 @@ Parse `$ARGUMENTS` as a single string:
 
 4. **Apply grid layout** (in the same message as step 3):
    ```bash
-   cru panes grid --expect <worker-count>
+   cru panes grid <team-name> --expect <worker-count>
    ```
    This polls for worker panes (up to 30s) and arranges them in a grid. In Ghostty, it automatically mirrors tmux panes into native splits.
 
