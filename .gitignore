@@ -3,4 +3,4 @@ package-lock.json
 .claude/skills/
 tests/artifacts/
 tests/e2e/ocr
-tests/e2e/ghostty-window-id
+tests/e2e/ghostty-window-id.vscode/
