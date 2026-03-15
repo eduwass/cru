@@ -1,4 +1,4 @@
-<p align="center"><img src="assets/logo.svg" width="128"/></p>
+<p align="center"><img src="https://raw.githubusercontent.com/eduwass/cru/main/assets/logo.svg" width="128"/></p>
 
 # ◫ cru
 
@@ -18,7 +18,7 @@ Agent teams let multiple Claude Code instances work together in parallel — cru
 ╰──────────────────┴────────────────┴────────────────╯
 ```
 
-![demo](assets/demo.gif)
+![demo](https://raw.githubusercontent.com/eduwass/cru/main/assets/demo.gif)
 
 ## Terminal setup
 
