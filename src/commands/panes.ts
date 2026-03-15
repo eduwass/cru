@@ -142,7 +142,10 @@ function resolveWorkerNames(teamName: string | undefined, count: number): string
   if (teamName) {
     try {
       const config = readTeamConfig(teamName)
-      const names = config.members?.map((m: any) => m.name) || []
+      // Filter out the lead (role=lead or name=main/team-lead) — only want workers
+      const names = (config.members || [])
+        .filter((m: any) => m.role !== 'lead' && m.name !== 'main' && m.name !== 'team-lead')
+        .map((m: any) => m.name)
       if (names.length >= count) return names.slice(0, count)
     } catch {}
   }
@@ -216,8 +219,15 @@ function runGridCmux(c) {
   console.log(`  [grid] found swarm: ${swarm.socket}/${swarm.session}`)
   setRemainOnExit(swarm.socket)
 
-  // 2. Incrementally mirror workers as they appear
+  // 2. Incrementally mirror workers into a grid layout
+  //    Row 0: split right from lead, then right from each previous
+  //    Row 1+: split down from the column above
+  const conf = loadConfig()
+  applyConfigOverrides(conf, c.options)
+  const totalExpected = expectedWorkers || 1
+  const { cols } = computeGrid(totalExpected, conf.layout)
   const mirrored = new Map<string, { cmuxSurface: string; viewSession: string }>()
+  const mirroredSurfaces: string[] = [] // ordered list for grid positioning
 
   while (Date.now() < deadline) {
     const allWorkers = getWorkerPanes(swarm.socket)
@@ -225,16 +235,31 @@ function runGridCmux(c) {
 
     for (const paneId of newWorkers) {
       const idx = mirrored.size
-      const splitDir: 'right' | 'down' = idx === 0 ? 'right' : 'down'
-      const splitTarget = idx === 0
-        ? leadSurface
-        : [...mirrored.values()].pop()!.cmuxSurface
+      const row = Math.floor(idx / cols)
+      const col = idx % cols
+
+      let splitDir: 'right' | 'down'
+      let splitTarget: string
+      if (idx === 0) {
+        // First worker: split right from lead
+        splitDir = 'right'
+        splitTarget = leadSurface
+      } else if (row === 0) {
+        // Row 0: split right from previous worker
+        splitDir = 'right'
+        splitTarget = mirroredSurfaces[idx - 1]
+      } else {
+        // Row 1+: split down from the cell above in same column
+        splitDir = 'down'
+        splitTarget = mirroredSurfaces[(row - 1) * cols + col]
+      }
 
       const result = mirrorWorkerToCmux(
         swarm.socket, swarm.session,
         paneId, idx, splitTarget, splitDir,
       )
       mirrored.set(paneId, result)
+      mirroredSurfaces.push(result.cmuxSurface)
     }
 
     if (expectedWorkers && mirrored.size >= expectedWorkers) break
