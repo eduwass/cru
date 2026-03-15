@@ -369,20 +369,16 @@ export function spawnProgressWatcher(teamName: string, workerCount: number): voi
  */
 export function spawnDelayedCleanup(delaySec = 10): void {
   const ws = currentWorkspace()
+  // Use a simple shell sleep + cmux commands (more reliable than bun -e)
+  const cmd = [
+    `sleep ${delaySec}`,
+    `cmux clear-status team --workspace ${ws}`,
+    `cmux clear-status phase --workspace ${ws}`,
+    `cmux clear-progress --workspace ${ws}`,
+    `cmux clear-log --workspace ${ws}`,
+  ].join(' && ')
 
-  const script = `
-    Bun.sleepSync(${delaySec * 1000});
-    const { execFileSync } = require('node:child_process');
-    const ws = '${ws}';
-    const cmux = (...args) => {
-      try { execFileSync('cmux', [...args, '--workspace', ws], { encoding: 'utf-8', timeout: 5000 }); } catch {}
-    };
-    cmux('clear-status', 'team');
-    cmux('clear-status', 'phase');
-    cmux('clear-progress');
-    cmux('clear-log');
-  `;
-  Bun.spawn(['bun', '-e', script], {
+  Bun.spawn(['sh', '-c', cmd], {
     detached: true,
     stdio: ['ignore', 'ignore', 'ignore'],
   }).unref()
