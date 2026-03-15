@@ -13,7 +13,11 @@ export function ghostty(script: string): string {
 /** Send text + Enter to a terminal (like typing a command). */
 export function sendLine(terminalId: string, text: string): void {
   const escaped = text.replace(/\\/g, '\\\\').replace(/"/g, '\\"')
+  // Use input text for the content, then send key for Enter.
+  // The 200ms delay ensures Claude's TUI has processed the pasted text
+  // before we press Enter.
   ghostty(`input text "${escaped}" to terminal id "${terminalId}"`)
+  Bun.sleepSync(200)
   ghostty(`send key "enter" to terminal id "${terminalId}"`)
 }
 
