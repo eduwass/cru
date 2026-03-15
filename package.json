@@ -1,7 +1,7 @@
 {
-  "name": "cru-cli",
+  "name": "cru-teams",
   "version": "1.0.0",
-  "description": "◫ Manage tmux layouts for Claude Code agent teams",
+  "description": "◫ Manage terminal layouts for Claude Code agent teams",
   "type": "module",
   "bin": {
     "cru": "./src/cli.ts"
@@ -13,7 +13,8 @@
   "scripts": {
     "dev": "bun src/cli.ts",
     "test": "bun test tests/unit/",
-    "test:e2e": "bun test tests/e2e/ --timeout 120000"
+    "test:e2e": "bun test tests/e2e/ --timeout 120000",
+    "publish": "npm publish --access public"
   },
   "keywords": [
     "claude-code",

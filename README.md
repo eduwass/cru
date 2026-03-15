@@ -29,13 +29,13 @@ Agent teams let multiple Claude Code instances work together in parallel — cru
 ## Install
 
 ```bash
-npm install -g cru-cli
+npm install -g cru-teams
 ```
 ```bash
-pnpm add -g cru-cli
+pnpm add -g cru-teams
 ```
 ```bash
-bun add -g cru-cli
+bun add -g cru-teams
 ```
 
 ## Quick start
