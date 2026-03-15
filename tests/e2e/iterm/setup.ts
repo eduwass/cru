@@ -12,7 +12,7 @@
  *   5. env.teardown()     — kill the tmux session (closes the window)
  */
 import { $ } from 'bun'
-import { poll, createRunDir } from './helpers'
+import { poll, createRunDir } from '../../helpers/common'
 
 // ---------------------------------------------------------------------------
 // Types

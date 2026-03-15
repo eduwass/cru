@@ -16,7 +16,7 @@
 import { $ } from 'bun'
 import { describe, test, expect, beforeAll, afterAll } from 'bun:test'
 import { createTestEnv, type TestEnv } from './setup'
-import { saveDebugSnapshot, saveLogs, captureTmuxPane, poll } from './helpers'
+import { saveDebugSnapshot, saveLogs, captureTmuxPane, poll } from '../../helpers/common'
 
 const TIMEOUT = 300_000
 
