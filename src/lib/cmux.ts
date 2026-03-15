@@ -146,6 +146,12 @@ export function renameSurface(surfaceId: string, title: string): void {
   cmux('rename-tab', title, '--surface', surfaceId)
 }
 
+/** Get the current title of a surface. */
+export function getSurfaceTitle(surfaceId: string): string {
+  const surfaces = listSurfaces()
+  return surfaces.find((s) => s.id === surfaceId)?.title || ''
+}
+
 // ---------------------------------------------------------------------------
 // I/O
 // ---------------------------------------------------------------------------

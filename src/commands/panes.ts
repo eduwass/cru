@@ -166,6 +166,7 @@ function runGridCmux(c) {
     focusSurface,
     closeSurface,
     renameSurface,
+    getSurfaceTitle,
   } = require('../lib/cmux') as typeof import('../lib/cmux')
 
   const conf = loadConfig()
@@ -198,9 +199,13 @@ function runGridCmux(c) {
   // Label surfaces and build worker records
   const label = teamName || 'cru'
   const names = resolveWorkerNames(teamName, workerIds.length)
-  try { renameSurface(leadSurface, `lead @ ${label}`) } catch {}
+
+  // Append to lead's existing title (don't overwrite user's name)
+  const leadOriginalTitle = getSurfaceTitle(leadSurface)
+  try { renameSurface(leadSurface, `${leadOriginalTitle} (◫ lead @ ${label})`) } catch {}
+
   const workers = workerIds.map((id, i) => {
-    try { renameSurface(id, `${names[i]} @ ${label}`) } catch {}
+    try { renameSurface(id, `⚡ ${names[i]} @ ${label}`) } catch {}
     return { name: names[i], paneId: id, color: WORKER_COLORS[i % WORKER_COLORS.length] }
   })
 
@@ -211,6 +216,7 @@ function runGridCmux(c) {
       backend: 'cmux',
       createdAt: Date.now(),
       workers,
+      leadOriginalTitle,
     })
   }
 
@@ -414,6 +420,24 @@ function runClose(c) {
           closed.push({ name: `pane-${closed.length + 1}`, pane: p.id })
         }
       }
+    } catch {}
+  }
+
+  // Restore lead pane's original title (remove appended team label)
+  if (cruPanes?.backend === 'cmux' && cruPanes.leadOriginalTitle != null) {
+    try {
+      const { renameSurface } = require('../lib/cmux')
+      renameSurface(cruPanes.leadPane, cruPanes.leadOriginalTitle)
+    } catch {}
+  }
+
+  // Clean up pane tracking file (team data stays for `cru logs` review)
+  if (teamName && closed.length > 0) {
+    try {
+      const { unlinkSync } = require('node:fs')
+      const { join } = require('node:path')
+      const { teamsDir } = require('../lib/paths')
+      unlinkSync(join(teamsDir(), teamName, 'cru-panes.json'))
     } catch {}
   }
 

@@ -9,6 +9,7 @@ export interface PaneRecord {
   workers: Array<{ name: string; paneId: string; color: string }>
   createdAt: number
   backend?: 'tmux' | 'ghostty' | 'cmux'
+  leadOriginalTitle?: string
 }
 
 function panePath(teamName: string): string {
