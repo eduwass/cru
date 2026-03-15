@@ -18,7 +18,7 @@
 import { execFileSync } from 'node:child_process'
 import { readdirSync, statSync } from 'node:fs'
 import { join } from 'node:path'
-import { splitTerminal, sendCommand } from './ghostty'
+import { splitTerminal, sendCommand as ghosttySendCommand } from './ghostty'
 
 /** Run a tmux command on a specific socket (or default). */
 function tmuxSocket(args: string[], socket?: string): string {
@@ -141,9 +141,51 @@ export function mirrorSingleWorker(
   Bun.sleepSync(300)
 
   // Attach to the view session via the custom socket
-  sendCommand(newTermId, `tmux -L ${socket} attach -t ${viewName}`)
+  ghosttySendCommand(newTermId, `tmux -L ${socket} attach -t ${viewName}`)
   Bun.sleepSync(200)
 
   console.log(`  [mirror] ${windowName} (${paneId}) → ghostty:${newTermId}`)
   return { ghosttyTerminal: newTermId, viewSession: viewName }
+}
+
+/**
+ * Mirror a single tmux worker pane into a cmux split.
+ * Same approach as Ghostty mirroring but uses cmux CLI for splits.
+ */
+export function mirrorWorkerToCmux(
+  socket: string,
+  session: string,
+  paneId: string,
+  index: number,
+  splitTarget: string,
+  splitDirection: 'right' | 'down',
+): { cmuxSurface: string; viewSession: string } {
+  const { splitSurface, sendCommand: cmuxSendCommand } = require('./cmux')
+
+  const windowName = `worker-${index + 1}`
+  const viewName = `view-${index + 1}`
+
+  // Break pane into its own tmux window
+  try {
+    tmuxSocket(['break-pane', '-s', paneId, '-d', '-n', windowName], socket)
+  } catch (e: any) {
+    console.error(`  [mirror] break-pane ${paneId}: ${e.message}`)
+  }
+
+  // Create a session group member pointing at the worker's window
+  try { tmuxSocket(['kill-session', '-t', viewName], socket) } catch {}
+  tmuxSocket(['new-session', '-d', '-t', session, '-s', viewName], socket)
+  tmuxSocket(['set-option', '-t', viewName, 'status', 'off'], socket)
+  tmuxSocket(['select-window', '-t', `${viewName}:${windowName}`], socket)
+
+  // Create cmux split relative to the target surface
+  const newSurface = splitSurface(splitDirection, splitTarget)
+  Bun.sleepSync(300)
+
+  // Attach to the view session via the custom socket
+  cmuxSendCommand(newSurface, `tmux -L ${socket} attach -t ${viewName}`)
+  Bun.sleepSync(200)
+
+  console.log(`  [mirror] ${windowName} (${paneId}) → cmux:${newSurface}`)
+  return { cmuxSurface: newSurface, viewSession: viewName }
 }

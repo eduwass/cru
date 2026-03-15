@@ -1,5 +1,5 @@
 import { z } from 'incur'
-import { hasBinary, getVersion, inTmux, inGhostty, detectTerminal } from '../lib/env'
+import { hasBinary, getVersion, inTmux, inGhostty, inCmux, detectTerminal } from '../lib/env'
 
 export const doctor = {
   description: 'Check environment requirements for cru',
@@ -65,6 +65,22 @@ export const doctor = {
         checks.push({ name: 'pane-backend', status: 'ok', detail: 'ghostty (native AppleScript)' })
       } else if (inTmux()) {
         checks.push({ name: 'pane-backend', status: 'ok', detail: 'tmux (inside Ghostty)' })
+      }
+    }
+
+    // cmux support
+    if (inCmux()) {
+      try {
+        const { cmuxVersion, isCmuxAvailable } = require('../lib/cmux')
+        if (isCmuxAvailable()) {
+          const ver = cmuxVersion() || 'unknown'
+          checks.push({ name: 'cmux', status: 'ok', detail: `${ver} (socket connected)` })
+          checks.push({ name: 'pane-backend', status: 'ok', detail: 'cmux (native CLI)' })
+        } else {
+          checks.push({ name: 'cmux', status: 'fail', detail: 'socket not responding', fix: 'Ensure cmux is running' })
+        }
+      } catch {
+        checks.push({ name: 'cmux', status: 'fail', detail: 'cannot connect to cmux' })
       }
     }
 

@@ -21,9 +21,11 @@ const PREFLIGHT: Record<string, string[]> = {
   panes: ['pane-session'],
 }
 
+const pkg = require('../package.json')
+
 Cli.create('cru', {
   description: '◫ Manage pane layouts for Claude Code agent teams',
-  version: '1.0.0',
+  version: pkg.version,
 })
   .use(async (c, next) => {
     const checks = PREFLIGHT[c.command]

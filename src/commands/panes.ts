@@ -7,7 +7,7 @@ import {
 } from '../lib/tmux'
 import { computeGrid } from '../lib/layout'
 import { loadPanes, savePanes } from '../lib/panes'
-import { inGhostty } from '../lib/env'
+import { inGhostty, inCmux } from '../lib/env'
 
 /**
  * Ghostty+tmux mirror flow:
@@ -135,19 +135,196 @@ function runGridGhostty(c) {
   }
 }
 
+const WORKER_COLORS = ['green', 'blue', 'yellow', 'magenta', 'cyan', 'red']
+
+/** Resolve worker names from team config, falling back to "worker-N". */
+function resolveWorkerNames(teamName: string | undefined, count: number): string[] {
+  if (teamName) {
+    try {
+      const config = readTeamConfig(teamName)
+      // Filter out the lead (role=lead or name=main/team-lead) — only want workers
+      const names = (config.members || [])
+        .filter((m: any) => m.role !== 'lead' && m.name !== 'main' && m.name !== 'team-lead')
+        .map((m: any) => m.name)
+      if (names.length >= count) return names.slice(0, count)
+    } catch {}
+  }
+  return Array.from({ length: count }, (_, i) => `worker-${i + 1}`)
+}
+
+/** Apply config overrides from CLI options. */
+function applyConfigOverrides(conf: ReturnType<typeof loadConfig>, options: any): void {
+  if (options['lead-size'] != null) conf.layout.lead.size = options['lead-size']
+  if (options['lead-position']) conf.layout.lead.position = options['lead-position']
+  if (options.fill) conf.layout.grid.fill = options.fill
+  if (options['max-cols'] != null) conf.layout.grid.maxCols = options['max-cols']
+  if (options['max-rows'] != null) conf.layout.grid.maxRows = options['max-rows']
+}
+
+/**
+ * cmux grid: mirror headless tmux workers into cmux splits.
+ *
+ * Same approach as Ghostty: workers spawn in `tmux -L claude-swarm-*`
+ * sessions. We find the swarm, break each pane into its own tmux window,
+ * create cmux splits, and attach each to a view session.
+ */
+function runGridCmux(c) {
+  const {
+    findBestSwarm,
+    getWorkerPanes,
+    mirrorWorkerToCmux,
+    setRemainOnExit,
+  } = require('../lib/mirror')
+  const {
+    currentSurface,
+    focusSurface,
+    closeSurface,
+    renameSurface,
+    getSurfaceTitle,
+  } = require('../lib/cmux') as typeof import('../lib/cmux')
+
+  const teamName = c.args.team
+  const expectedWorkers = c.options.expect
+  const leadSurface = currentSurface()
+  const deadline = Date.now() + 60_000
+
+  // Close previously-tracked workers (never arbitrary surfaces)
+  if (teamName) {
+    const existing = loadPanes(teamName)
+    if (existing?.backend === 'cmux') {
+      for (const w of existing.workers) closeSurface(w.paneId)
+      Bun.sleepSync(300)
+    }
+  }
+
+  // 1. Find the swarm socket
+  let swarm: { socket: string; session: string } | null = null
+  if (expectedWorkers) {
+    while (Date.now() < deadline) {
+      swarm = findBestSwarm(expectedWorkers)
+      if (swarm) break
+      Bun.sleepSync(200)
+    }
+  } else {
+    swarm = findBestSwarm()
+  }
+
+  if (!swarm) {
+    return c.error({
+      code: 'NO_SWARM',
+      message: 'No claude-swarm tmux session found. Is a Claude Code team running?',
+    })
+  }
+
+  console.log(`  [grid] found swarm: ${swarm.socket}/${swarm.session}`)
+  setRemainOnExit(swarm.socket)
+
+  // 2. Incrementally mirror workers into a grid layout
+  //    Row 0: split right from lead, then right from each previous
+  //    Row 1+: split down from the column above
+  const conf = loadConfig()
+  applyConfigOverrides(conf, c.options)
+  const totalExpected = expectedWorkers || 1
+  const { cols } = computeGrid(totalExpected, conf.layout)
+  const mirrored = new Map<string, { cmuxSurface: string; viewSession: string }>()
+  const mirroredSurfaces: string[] = [] // ordered list for grid positioning
+
+  while (Date.now() < deadline) {
+    const allWorkers = getWorkerPanes(swarm.socket)
+    const newWorkers = allWorkers.filter((p: string) => !mirrored.has(p))
+
+    for (const paneId of newWorkers) {
+      const idx = mirrored.size
+      const row = Math.floor(idx / cols)
+      const col = idx % cols
+
+      let splitDir: 'right' | 'down'
+      let splitTarget: string
+      if (idx === 0) {
+        // First worker: split right from lead
+        splitDir = 'right'
+        splitTarget = leadSurface
+      } else if (row === 0) {
+        // Row 0: split right from previous worker
+        splitDir = 'right'
+        splitTarget = mirroredSurfaces[idx - 1]
+      } else {
+        // Row 1+: split down from the cell above in same column
+        splitDir = 'down'
+        splitTarget = mirroredSurfaces[(row - 1) * cols + col]
+      }
+
+      const result = mirrorWorkerToCmux(
+        swarm.socket, swarm.session,
+        paneId, idx, splitTarget, splitDir,
+      )
+      mirrored.set(paneId, result)
+      mirroredSurfaces.push(result.cmuxSurface)
+    }
+
+    if (expectedWorkers && mirrored.size >= expectedWorkers) break
+
+    if (!expectedWorkers && mirrored.size > 0 && newWorkers.length === 0) {
+      Bun.sleepSync(3000)
+      const finalWorkers = getWorkerPanes(swarm.socket)
+      if (finalWorkers.filter((p: string) => !mirrored.has(p)).length === 0) break
+      continue
+    }
+
+    Bun.sleepSync(200)
+  }
+
+  if (mirrored.size === 0) {
+    return c.error({ code: 'NO_WORKERS', message: 'No worker panes found in swarm.' })
+  }
+
+  // 3. Label surfaces
+  const label = teamName || 'cru'
+  const leadOriginalTitle = getSurfaceTitle(leadSurface)
+  try { renameSurface(leadSurface, `${leadOriginalTitle} (◫ lead @ ${label})`) } catch {}
+
+  const mirrors = [...mirrored.entries()]
+  const names = resolveWorkerNames(teamName, mirrors.length)
+  const workers = mirrors.map(([, m], i) => {
+    try { renameSurface(m.cmuxSurface, `⚡ ${names[i]} @ ${label}`) } catch {}
+    return { name: names[i], paneId: m.cmuxSurface, color: WORKER_COLORS[i % WORKER_COLORS.length] }
+  })
+
+  // 4. Focus lead and save tracking
+  focusSurface(leadSurface)
+
+  if (teamName) {
+    savePanes(teamName, {
+      leadPane: leadSurface,
+      windowId: leadSurface,
+      backend: 'cmux',
+      createdAt: Date.now(),
+      workers,
+      leadOriginalTitle,
+    })
+  }
+
+  return {
+    applied: true,
+    backend: 'cmux',
+    swarm: `${swarm.socket}/${swarm.session}`,
+    workers: mirrored.size,
+  }
+}
+
 function runGrid(c) {
+  // cmux: native pane management via CLI
+  if (inCmux()) {
+    return runGridCmux(c)
+  }
+
   // Ghostty: mirror tmux panes into native splits
   if (inGhostty()) {
     return runGridGhostty(c)
   }
 
   const conf = loadConfig()
-
-  if (c.options['lead-size'] != null) conf.layout.lead.size = c.options['lead-size']
-  if (c.options['lead-position']) conf.layout.lead.position = c.options['lead-position']
-  if (c.options.fill) conf.layout.grid.fill = c.options.fill
-  if (c.options['max-cols'] != null) conf.layout.grid.maxCols = c.options['max-cols']
-  if (c.options['max-rows'] != null) conf.layout.grid.maxRows = c.options['max-rows']
+  applyConfigOverrides(conf, c.options)
 
   const teamName = c.args.team
   let windowId: string | null = null
@@ -233,7 +410,7 @@ function runGrid(c) {
 
 function runClose(c) {
   let teamName = c.args.team
-  if (!teamName && !inGhostty()) {
+  if (!teamName && !inGhostty() && !inCmux()) {
     try { teamName = findTeamForCurrentWindow() } catch {}
   }
   if (!teamName) return c.error({ code: 'NO_TEAM', message: 'No team specified and none found in current window' })
@@ -242,9 +419,14 @@ function runClose(c) {
   const cruPanes = loadPanes(teamName)
   if (cruPanes && cruPanes.workers.length > 0) {
     // Use the right kill method based on how panes were tracked
-    const killFn = cruPanes.backend === 'ghostty'
-      ? (id: string) => { try { require('../lib/ghostty').closeTerminal(id) } catch (e) { console.warn(`[close] failed to close Ghostty terminal ${id}: ${e}`) } }
-      : (id: string) => killPane(id)
+    let killFn: (id: string) => void
+    if (cruPanes.backend === 'cmux') {
+      killFn = (id: string) => { try { require('../lib/cmux').closeSurface(id) } catch (e) { console.warn(`[close] failed to close cmux surface ${id}: ${e}`) } }
+    } else if (cruPanes.backend === 'ghostty') {
+      killFn = (id: string) => { try { require('../lib/ghostty').closeTerminal(id) } catch (e) { console.warn(`[close] failed to close Ghostty terminal ${id}: ${e}`) } }
+    } else {
+      killFn = (id: string) => killPane(id)
+    }
 
     for (const w of cruPanes.workers) {
       killFn(w.paneId)
@@ -282,7 +464,21 @@ function runClose(c) {
     } catch {}
   }
 
-  if (closed.length === 0 && inGhostty()) {
+  if (closed.length === 0 && inCmux()) {
+    // Fallback: close all non-lead cmux surfaces in the caller's workspace only
+    try {
+      const { currentSurface, currentWorkspace, listAllSurfaceIds, closeSurface } = require('../lib/cmux')
+      const lead = currentSurface()
+      const ws = currentWorkspace()
+      const allSurfaces = listAllSurfaceIds(ws)
+      for (const id of allSurfaces) {
+        if (id !== lead) {
+          closeSurface(id)
+          closed.push({ name: `pane-${closed.length + 1}`, pane: id })
+        }
+      }
+    } catch {}
+  } else if (closed.length === 0 && inGhostty()) {
     // Fallback: close all non-lead Ghostty terminals
     // Uses process-tree-based currentTerminal() — works regardless of focus
     try {
@@ -310,10 +506,41 @@ function runClose(c) {
     } catch {}
   }
 
+  // Restore lead pane's original title (remove appended team label)
+  if (cruPanes?.backend === 'cmux' && cruPanes.leadOriginalTitle != null) {
+    try {
+      const { renameSurface } = require('../lib/cmux')
+      renameSurface(cruPanes.leadPane, cruPanes.leadOriginalTitle)
+    } catch {}
+  }
+
+  // Clean up pane tracking file (team data stays for `cru logs` review)
+  if (teamName && closed.length > 0) {
+    try {
+      const { unlinkSync } = require('node:fs')
+      const { join } = require('node:path')
+      const { teamsDir } = require('../lib/paths')
+      unlinkSync(join(teamsDir(), teamName, 'cru-panes.json'))
+    } catch {}
+  }
+
   return { team: teamName, closed: closed.length, panes: closed }
 }
 
 function runList(c) {
+  if (inCmux()) {
+    const { currentSurface, listSurfaces } = require('../lib/cmux')
+    let currentId: string | null = null
+    try { currentId = currentSurface() } catch {}
+    const surfaces = listSurfaces()
+    const panes = surfaces.map((s: { id: string; index: number }) => ({
+      id: s.id,
+      index: s.index,
+      current: s.id === currentId,
+    }))
+    return { backend: 'cmux', panes }
+  }
+
   if (inGhostty()) {
     const { ghostty, currentTerminal, listAllTerminals } = require('../lib/ghostty')
     const allIds = listAllTerminals()
