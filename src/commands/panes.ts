@@ -188,6 +188,9 @@ function runGridCmux(c) {
     clearStatus,
     clearProgress,
     clearLog,
+    setPhase,
+    clearPhase,
+    spawnProgressWatcher,
   } = require('../lib/cmux') as typeof import('../lib/cmux')
 
   const teamName = c.args.team
@@ -227,7 +230,8 @@ function runGridCmux(c) {
   setRemainOnExit(swarm.socket)
 
   const label = teamName || 'cru'
-  setStatus('team', label, { icon: 'people', color: '#6366f1' })
+  setStatus('team', label, { icon: 'person.2.fill', color: '#6366f1' })
+  setPhase('spawning', label)
   cmuxLog(`Swarm found, mirroring workers...`, 'progress')
 
   // 2. Incrementally mirror workers into a grid layout
@@ -289,6 +293,7 @@ function runGridCmux(c) {
   if (mirrored.size === 0) {
     clearProgress()
     clearStatus('team')
+    clearPhase()
     return c.error({ code: 'NO_WORKERS', message: 'No worker panes found in swarm.' })
   }
 
@@ -305,7 +310,8 @@ function runGridCmux(c) {
 
   // 4. Finalize sidebar and focus lead
   setProgress(1, `${workers.length} workers ready`)
-  setStatus('team', `${label} (${workers.length} workers)`, { icon: 'people', color: '#22c55e' })
+  setStatus('team', `${label} (${workers.length} workers)`, { icon: 'person.2.fill', color: '#22c55e' })
+  setPhase('working', label)
   notify(`◫ ${label}`, `Team ready — ${workers.length} workers in grid`)
   focusSurface(leadSurface)
 
@@ -318,6 +324,9 @@ function runGridCmux(c) {
       workers,
       leadOriginalTitle,
     })
+
+    // Start background task progress watcher
+    spawnProgressWatcher(teamName, workers.length)
   }
 
   return {
@@ -525,7 +534,8 @@ function runClose(c) {
   // Restore lead pane's original title and clear sidebar
   if (cruPanes?.backend === 'cmux') {
     try {
-      const { renameSurface, clearStatus, clearProgress, clearLog, notify, log: cmuxLog } = require('../lib/cmux')
+      const { renameSurface, clearStatus, clearProgress, clearPhase, notify, log: cmuxLog, setPhase } = require('../lib/cmux')
+      setPhase('closing', teamName)
       if (cruPanes.leadOriginalTitle != null) {
         renameSurface(cruPanes.leadPane, cruPanes.leadOriginalTitle)
       }
@@ -533,6 +543,7 @@ function runClose(c) {
       notify(`◫ ${teamName}`, `Team shut down — ${closed.length} workers closed`)
       clearStatus('team')
       clearProgress()
+      clearPhase()
     } catch {}
   }
 

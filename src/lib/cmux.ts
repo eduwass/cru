@@ -65,9 +65,10 @@ export function cmuxVersion(): string | null {
  */
 export function identify(): { surface: string; workspace: string } {
   const info = JSON.parse(cmux('identify'))
-  const surface = info.caller?.surface_ref
-  const workspace = info.caller?.workspace_ref
-  if (!surface) throw new Error('cmux identify did not return caller surface_ref')
+  // Prefer caller (the process's own surface), fall back to focused surface
+  const surface = info.caller?.surface_ref || info.focused?.surface_ref
+  const workspace = info.caller?.workspace_ref || info.focused?.workspace_ref
+  if (!surface) throw new Error('cmux identify did not return a surface_ref')
   return { surface, workspace: workspace || 'workspace:1' }
 }
 
@@ -235,6 +236,120 @@ export function clearLog(workspace?: string): void {
   const args = ['clear-log']
   if (workspace) args.push('--workspace', workspace)
   try { cmux(...args) } catch {}
+}
+
+// ---------------------------------------------------------------------------
+// Lifecycle status pills
+// ---------------------------------------------------------------------------
+
+/** Set the team lifecycle phase in the sidebar. Uses SF Symbol icons. */
+export function setPhase(phase: 'spawning' | 'working' | 'done' | 'closing', teamName: string, detail?: string, workspace?: string): void {
+  const phases = {
+    spawning: { icon: 'circle.dotted', color: '#a78bfa', label: 'spawning' },
+    working:  { icon: 'bolt.fill',     color: '#eab308', label: 'working' },
+    done:     { icon: 'checkmark.circle.fill', color: '#22c55e', label: 'done' },
+    closing:  { icon: 'xmark.circle',  color: '#ef4444', label: 'closing' },
+  }
+  const p = phases[phase]
+  const value = detail ? `${p.label} — ${detail}` : p.label
+  setStatus('phase', value, { icon: p.icon, color: p.color, workspace })
+}
+
+/** Clear the phase pill. */
+export function clearPhase(workspace?: string): void {
+  clearStatus('phase', workspace)
+}
+
+// ---------------------------------------------------------------------------
+// Progress watcher
+// ---------------------------------------------------------------------------
+
+/**
+ * Spawn a background process that polls Claude Code's task system
+ * and updates the cmux sidebar with worker progress.
+ *
+ * Reads ~/.claude/tasks/<team>/*.json to track completed vs total tasks.
+ * Exits when all tasks are done or the team is closed.
+ */
+export function spawnProgressWatcher(teamName: string, workerCount: number): void {
+  const script = `
+    const { readFileSync, readdirSync, existsSync } = require('node:fs');
+    const { join } = require('node:path');
+    const { execFileSync } = require('node:child_process');
+    const { homedir } = require('node:os');
+
+    const cmux = (...args) => {
+      try { return execFileSync('cmux', args, { encoding: 'utf-8', timeout: 5000 }).trim(); }
+      catch { return ''; }
+    };
+
+    const setPhase = (icon, color, label) => {
+      cmux('set-status', 'phase', label, '--icon', icon, '--color', color);
+    };
+
+    const tasksDir = join(homedir(), '.claude', 'tasks', '${teamName}');
+    const panesFile = join(homedir(), '.claude', 'teams', '${teamName}', 'cru-panes.json');
+    let lastCompleted = 0;
+    let staleCount = 0;
+
+    setPhase('bolt.fill', '#eab308', 'working');
+
+    while (true) {
+      // Stop if team was closed (panes file removed)
+      if (!existsSync(panesFile)) break;
+
+      // Read task files
+      let tasks = [];
+      try {
+        if (existsSync(tasksDir)) {
+          for (const f of readdirSync(tasksDir)) {
+            if (!f.endsWith('.json')) continue;
+            try { tasks.push(JSON.parse(readFileSync(join(tasksDir, f), 'utf-8'))); } catch {}
+          }
+        }
+      } catch {}
+
+      if (tasks.length > 0) {
+        const completed = tasks.filter(t => t.status === 'completed').length;
+        const inProgress = tasks.filter(t => t.status === 'in_progress').length;
+        const totalTasks = tasks.length;
+
+        if (completed !== lastCompleted) {
+          lastCompleted = completed;
+          staleCount = 0;
+
+          const ratio = totalTasks > 0 ? completed / totalTasks : 0;
+          cmux('set-progress', String(ratio), '--label', completed + '/' + totalTasks + ' tasks done');
+
+          if (completed > 0 && completed < totalTasks) {
+            cmux('log', '--level', 'progress', '--source', 'cru', '--', completed + '/' + totalTasks + ' tasks completed');
+            setPhase('bolt.fill', '#eab308', 'working — ' + completed + '/' + totalTasks + ' done');
+          }
+
+          if (completed >= totalTasks) {
+            cmux('set-progress', '1', '--label', 'All tasks done');
+            cmux('log', '--level', 'success', '--source', 'cru', '--', 'All ' + totalTasks + ' tasks completed');
+            cmux('notify', '--title', '◫ ${teamName}', '--body', 'All tasks completed');
+            setPhase('checkmark.circle.fill', '#22c55e', 'done');
+            cmux('set-status', 'team', '${teamName} ✓', '--icon', 'person.2.fill', '--color', '#22c55e');
+            break;
+          }
+        }
+      }
+
+      // Give up after 10 min of no changes
+      staleCount++;
+      if (staleCount > 300) break;
+
+      Bun.sleepSync(2000);
+    }
+  `;
+
+  // Spawn detached so cru can exit
+  Bun.spawn(['bun', '-e', script], {
+    detached: true,
+    stdio: ['ignore', 'ignore', 'ignore'],
+  }).unref()
 }
 
 // ---------------------------------------------------------------------------
