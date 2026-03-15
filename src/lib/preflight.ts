@@ -1,4 +1,4 @@
-import { hasBinary, inTmux, inGhostty, detectTerminal } from './env'
+import { hasBinary, inTmux, inGhostty, inCmux, detectTerminal } from './env'
 
 const INSTALL_HINTS: Record<string, Record<string, string>> = {
   tmux: {
@@ -59,7 +59,16 @@ export function preflight(...checks: Check[]): { ok: boolean; errors: PreflightE
         break
 
       case 'pane-session':
-        if (inGhostty()) {
+        if (inCmux()) {
+          try {
+            const { isCmuxAvailable } = require('./cmux')
+            if (!isCmuxAvailable()) {
+              errors.push({ check: 'pane-session', message: 'cmux socket is not responding. Is cmux running?' })
+            }
+          } catch {
+            errors.push({ check: 'pane-session', message: 'Cannot connect to cmux socket' })
+          }
+        } else if (inGhostty()) {
           if (process.platform !== 'darwin') {
             errors.push({ check: 'pane-session', message: 'Ghostty AppleScript is only available on macOS' })
           } else {
@@ -73,9 +82,9 @@ export function preflight(...checks: Check[]): { ok: boolean; errors: PreflightE
             }
           }
         } else if (!hasBinary('tmux')) {
-          errors.push({ check: 'pane-session', message: 'tmux is not installed (or use Ghostty for native pane support)', hint: platformHint('tmux') })
+          errors.push({ check: 'pane-session', message: 'tmux is not installed (or use Ghostty/cmux for native pane support)', hint: platformHint('tmux') })
         } else if (!inTmux()) {
-          errors.push({ check: 'pane-session', message: 'Not inside a tmux session (or use Ghostty for native pane support)', hint: tmuxCmd })
+          errors.push({ check: 'pane-session', message: 'Not inside a tmux session (or use Ghostty/cmux for native pane support)', hint: tmuxCmd })
         }
         break
 

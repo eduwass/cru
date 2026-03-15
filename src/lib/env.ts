@@ -43,3 +43,8 @@ export function detectTerminal(): string {
 export function inGhostty(): boolean {
   return detectTerminal() === 'ghostty' && !inTmux()
 }
+
+/** Check if we're inside a cmux terminal. */
+export function inCmux(): boolean {
+  return !!process.env.CMUX_WORKSPACE_ID
+}

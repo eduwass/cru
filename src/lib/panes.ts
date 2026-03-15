@@ -8,7 +8,7 @@ export interface PaneRecord {
   windowId: string
   workers: Array<{ name: string; paneId: string; color: string }>
   createdAt: number
-  backend?: 'tmux' | 'ghostty'
+  backend?: 'tmux' | 'ghostty' | 'cmux'
 }
 
 function panePath(teamName: string): string {
@@ -33,6 +33,18 @@ export function loadPanes(teamName: string): PaneRecord | null {
 export function isTeamAlive(teamName: string): boolean {
   try {
     const cruPanes = loadPanes(teamName)
+
+    // For cmux-tracked teams, check via cmux CLI
+    if (cruPanes?.backend === 'cmux') {
+      try {
+        const { listAllSurfaceIds } = require('./cmux')
+        const allSurfaces = new Set(listAllSurfaceIds())
+        return cruPanes.workers.some((w) => allSurfaces.has(w.paneId))
+      } catch (e) {
+        console.warn(`[isTeamAlive] failed to query cmux for team "${teamName}": ${e}`)
+        return false
+      }
+    }
 
     // For ghostty-tracked teams, check via AppleScript
     if (cruPanes?.backend === 'ghostty') {
