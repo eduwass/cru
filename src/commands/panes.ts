@@ -535,15 +535,16 @@ function runClose(c) {
   // Restore lead pane's original title and clear sidebar
   if (cruPanes?.backend === 'cmux') {
     try {
-      const { renameSurface, notify, log: cmuxLog, setPhase, spawnDelayedCleanup } = require('../lib/cmux')
-      setPhase('closing', teamName)
+      const { renameSurface, notify, clearStatus, clearProgress, clearPhase, clearLog } = require('../lib/cmux')
       if (cruPanes.leadOriginalTitle != null) {
         renameSurface(cruPanes.leadPane, cruPanes.leadOriginalTitle)
       }
-      cmuxLog(`Team closed — ${closed.length} panes removed`, 'info')
       notify(`◫ ${teamName}`, `Team shut down — ${closed.length} workers closed`)
-      // Clear all sidebar state after 10s so user can see the "closed" status briefly
-      spawnDelayedCleanup(10)
+      // Clean slate — remove all cru sidebar state
+      clearStatus('team')
+      clearPhase()
+      clearProgress()
+      clearLog()
     } catch {}
   }
 

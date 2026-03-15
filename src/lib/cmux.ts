@@ -362,28 +362,6 @@ export function spawnProgressWatcher(teamName: string, workerCount: number): voi
   }).unref()
 }
 
-/**
- * Spawn a background process that clears all sidebar state after a delay.
- * Used after team close to give the user time to see the "closed" status
- * before returning to a clean sidebar.
- */
-export function spawnDelayedCleanup(delaySec = 10): void {
-  const ws = currentWorkspace()
-  // Use a simple shell sleep + cmux commands (more reliable than bun -e)
-  const cmd = [
-    `sleep ${delaySec}`,
-    `cmux clear-status team --workspace ${ws}`,
-    `cmux clear-status phase --workspace ${ws}`,
-    `cmux clear-progress --workspace ${ws}`,
-    `cmux clear-log --workspace ${ws}`,
-  ].join(' && ')
-
-  Bun.spawn(['sh', '-c', cmd], {
-    detached: true,
-    stdio: ['ignore', 'ignore', 'ignore'],
-  }).unref()
-}
-
 // ---------------------------------------------------------------------------
 // Focus
 // ---------------------------------------------------------------------------
