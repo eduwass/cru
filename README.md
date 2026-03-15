@@ -271,10 +271,13 @@ src/
 │   └── logs.ts                   # Team activity log
 └── lib/
     ├── config.ts                 # Config loading & merging
-    ├── env.ts                    # Environment detection utilities
+    ├── env.ts                    # Environment detection (tmux, ghostty, etc.)
+    ├── ghostty.ts                # Ghostty AppleScript helpers
     ├── layout.ts                 # Grid math & tmux layout strings
-    ├── preflight.ts              # Prerequisite checks
+    ├── mirror.ts                 # Mirror tmux swarm panes into Ghostty splits
     ├── panes.ts                  # Pane tracking (cru-panes.json)
+    ├── paths.ts                  # Shared path helpers
+    ├── preflight.ts              # Prerequisite checks
     ├── teams.ts                  # Read Claude Code team configs
     └── tmux.ts                   # Tmux command helpers
 

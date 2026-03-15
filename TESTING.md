@@ -1,92 +1,74 @@
-# Testing Plan
+# Testing
 
-Two layers: unit tests for deterministic CLI internals, e2e evals for the full skill flow.
+## Unit tests
 
-## Layer 1: Unit Tests
+Pure functions, no terminal needed. Run with `bun test tests/unit/`.
 
-Pure functions, no tmux/LLM needed. Run with `bun test`.
+```
+tests/unit/
+├── config.test.ts    # deepMerge, config resolution
+├── layout.test.ts    # computeGrid, buildLayout (tmux layout strings)
+├── logs.test.ts      # message parsing, truncation, color hashing
+└── panes.test.ts     # pane record shape, serialization
+```
 
-### `src/lib/layout.ts` — ✅ done
+## E2E tests
 
-- [x] `computeGrid` — correct cols/rows for various worker counts (1–12)
-- [x] `computeGrid` — respects `maxCols` constraint
-- [x] `computeGrid` — respects `maxRows` constraint
-- [x] `computeGrid` — respects both `maxCols` + `maxRows` together
-- [x] `buildLayout` — produces valid tmux layout string for 1 worker
-- [x] `buildLayout` — produces valid tmux layout string for 2 workers
-- [x] `buildLayout` — produces valid tmux layout string for 4 workers (2x2)
-- [x] `buildLayout` — lead position left/right/top/bottom all produce different layouts
-- [x] `buildLayout` — lead size percentage is respected
-- [x] `buildLayout` — column fill reorders pane IDs
-- [x] `buildLayout` — all pane IDs present in output
+Real terminal sessions with Claude Code. Each backend has its own test suite.
 
-Note: `distribute` and `reorderColumnFirst` are internal — tested indirectly through `buildLayout`.
+```
+tests/e2e/
+├── iterm/            # iTerm2 + tmux -CC
+│   ├── setup.ts      # creates iTerm window → tmux -CC → Claude
+│   ├── smoke.test.ts
+│   ├── explicit-count.test.ts
+│   └── full-workflow.test.ts
+└── ghostty/          # Native Ghostty (AppleScript)
+    ├── setup.ts      # creates Ghostty window → Claude (no tmux wrapper)
+    ├── smoke.test.ts
+    └── workflow.test.ts
+```
 
-### `src/lib/config.ts` — ✅ done
+### Running
 
-- [x] `deepMerge` — merges flat objects
-- [x] `deepMerge` — later values override earlier
-- [x] `deepMerge` — merges nested objects recursively
-- [x] `deepMerge` — replaces arrays (no array merging)
-- [x] `deepMerge` — adds new nested keys
-- [x] `deepMerge` — null values override
-- [x] `deepMerge` — returns mutated target
-- [x] `deepMerge` — works with DEFAULTS shape
+```bash
+# Unit tests
+bun test tests/unit/
 
-### `src/lib/spawn.ts` — ✅ done
+# Ghostty e2e (requires Ghostty v1.3.0+)
+bun test tests/e2e/ghostty/smoke.test.ts --timeout 60000
+bun test tests/e2e/ghostty/workflow.test.ts --timeout 600000
 
-- [x] `buildClaudeCmd` — agent ID as `name@team`
-- [x] `buildClaudeCmd` — includes all flags (name, team, color, parent session, agent type)
-- [x] `buildClaudeCmd` — prepends `cd` when cwd is set, quotes paths with spaces
-- [x] `buildClaudeCmd` — starts with `claude` when no cwd
-- [x] Color cycling — wraps after 6 colors
+# iTerm2 e2e (requires iTerm2 + it2 CLI + tmux)
+bun test tests/e2e/iterm/smoke.test.ts --timeout 120000
+bun test tests/e2e/iterm/full-workflow.test.ts --timeout 600000
+```
 
-### Infra setup — ✅ done
+### Shared helpers
 
-- [x] Add `"test": "bun test"` to `package.json`
-- [x] Create `src/lib/layout.test.ts`
-- [x] Create `src/lib/config.test.ts`
+```
+tests/helpers/
+├── common.ts     # poll, tmux utils, snapshots, createRunDir
+├── iterm.ts      # it2 CLI helpers (getScreen, sendText, etc.)
+└── ghostty.ts    # AppleScript helpers, swarm socket discovery
+```
 
-## Layer 2: E2E Evals
+### How the Ghostty tests work
 
-Run the actual skill in iTerm2 + tmux, verify results with `tmux` commands and [it2](https://it2.tmc.dev/).
+Ghostty tests don't use tmux in the test terminal — they test the real native flow:
 
-### Test harness — ✅ done
+1. Open a Ghostty window via AppleScript
+2. Start Claude Code directly (no tmux wrapper)
+3. Send `/cru` via `input text` AppleScript
+4. Assert by checking: Ghostty terminal count (via AppleScript), swarm tmux sessions, `~/.claude/teams/`, cru CLI output
+5. Terminal tracking uses snapshot diffing (all terminal IDs before/after) so the user can switch focus freely during tests
 
-Uses `bun:test` + Bun Shell (`$`) for structured tests with real shell execution.
-Run with `bun run test:e2e` (requires tmux + iTerm2 + it2 + Claude Code).
+### How the iTerm tests work
 
-- [x] `tests/e2e/helpers.ts` — shared utilities (poll, waitForPanes, getScreen, sendText, etc.)
-- [x] `tests/e2e/explicit-count.test.ts` — tests with explicit worker count
-- [ ] ~~`tests/e2e/no-tmux.test.ts`~~ — removed (spawn command removed)
-- [x] Polling with timeout via `poll()` helper — no arbitrary sleeps
-- [x] Cleanup in `afterAll` via `closeTeam()`
-- [x] `bun run test:e2e` script in package.json (120s timeout)
+iTerm tests use tmux -CC (control mode) for native pane integration:
 
-### it2 integration
-
-Key commands used in the harness:
-
-- [x] `it2 session send-text --require is-claude-session,is-at-prompt` — wait for Claude ready
-- [x] `it2 get-screen --wait-stable` — capture settled screen contents
-- [x] `it2 get-buffer --last N` — read buffer with scrollback
-- [x] `it2-session-has-no-queued-claude-messages` — check if Claude is idle
-- [x] `it2-session-claude-auto-approve` — auto-approve safe modals
-
-### Eval cases
-
-**Explicit count** (`tests/e2e/explicit-count.test.ts`):
-
-| Task | Expected | Assertion |
-|------|----------|-----------|
-| `/cru 3 say hi` | 3 workers | pane count = 4, workers loaded, tasks sent |
-
-**No tmux** — removed (spawn command removed in entity-based restructure).
-
-### Not yet implemented
-
-- [ ] Verify workers are running `claude` processes (check child of pane PID)
-- [ ] Verify workers are working on *different* slices (buffer content analysis)
-- [ ] Verify lead received a status summary
-- [ ] Auto-approve worker modals during test run (babysit loop)
-- [ ] CI-friendly mode (headless tmux, no iTerm2 dependency)
+1. Open an iTerm2 window, start `tmux -CC`
+2. Launch Claude Code in the tmux pane
+3. Send commands via `it2 session send-text`
+4. Assert using `it2 get-screen`, tmux pane queries, cru CLI output
+5. Claude readiness detected via iTerm2 plugin data (`has-no-queued-claude-messages`)
