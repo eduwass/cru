@@ -18,7 +18,7 @@ Agent teams let multiple Claude Code instances work together in parallel — cru
 ╰──────────────────┴────────────────┴────────────────╯
 ```
 
-<video src="assets/demo.mp4" autoplay loop muted playsinline></video>
+![demo](assets/demo.gif)
 
 ## Terminal setup
 
