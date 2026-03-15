@@ -181,6 +181,13 @@ function runGridCmux(c) {
     closeSurface,
     renameSurface,
     getSurfaceTitle,
+    notify,
+    setStatus,
+    setProgress,
+    log: cmuxLog,
+    clearStatus,
+    clearProgress,
+    clearLog,
   } = require('../lib/cmux') as typeof import('../lib/cmux')
 
   const teamName = c.args.team
@@ -219,15 +226,19 @@ function runGridCmux(c) {
   console.log(`  [grid] found swarm: ${swarm.socket}/${swarm.session}`)
   setRemainOnExit(swarm.socket)
 
+  const label = teamName || 'cru'
+  setStatus('team', label, { icon: 'people', color: '#6366f1' })
+  cmuxLog(`Swarm found, mirroring workers...`, 'progress')
+
   // 2. Incrementally mirror workers into a grid layout
-  //    Row 0: split right from lead, then right from each previous
-  //    Row 1+: split down from the column above
   const conf = loadConfig()
   applyConfigOverrides(conf, c.options)
   const totalExpected = expectedWorkers || 1
   const { cols } = computeGrid(totalExpected, conf.layout)
   const mirrored = new Map<string, { cmuxSurface: string; viewSession: string }>()
-  const mirroredSurfaces: string[] = [] // ordered list for grid positioning
+  const mirroredSurfaces: string[] = []
+
+  setProgress(0, `0/${totalExpected} workers`)
 
   while (Date.now() < deadline) {
     const allWorkers = getWorkerPanes(swarm.socket)
@@ -241,15 +252,12 @@ function runGridCmux(c) {
       let splitDir: 'right' | 'down'
       let splitTarget: string
       if (idx === 0) {
-        // First worker: split right from lead
         splitDir = 'right'
         splitTarget = leadSurface
       } else if (row === 0) {
-        // Row 0: split right from previous worker
         splitDir = 'right'
         splitTarget = mirroredSurfaces[idx - 1]
       } else {
-        // Row 1+: split down from the cell above in same column
         splitDir = 'down'
         splitTarget = mirroredSurfaces[(row - 1) * cols + col]
       }
@@ -260,6 +268,10 @@ function runGridCmux(c) {
       )
       mirrored.set(paneId, result)
       mirroredSurfaces.push(result.cmuxSurface)
+
+      // Update sidebar progress
+      cmuxLog(`worker-${idx + 1} mirrored`, 'success')
+      setProgress(mirrored.size / totalExpected, `${mirrored.size}/${totalExpected} workers`)
     }
 
     if (expectedWorkers && mirrored.size >= expectedWorkers) break
@@ -275,11 +287,12 @@ function runGridCmux(c) {
   }
 
   if (mirrored.size === 0) {
+    clearProgress()
+    clearStatus('team')
     return c.error({ code: 'NO_WORKERS', message: 'No worker panes found in swarm.' })
   }
 
   // 3. Label surfaces
-  const label = teamName || 'cru'
   const leadOriginalTitle = getSurfaceTitle(leadSurface)
   try { renameSurface(leadSurface, `${leadOriginalTitle} (◫ lead @ ${label})`) } catch {}
 
@@ -290,7 +303,10 @@ function runGridCmux(c) {
     return { name: names[i], paneId: m.cmuxSurface, color: WORKER_COLORS[i % WORKER_COLORS.length] }
   })
 
-  // 4. Focus lead and save tracking
+  // 4. Finalize sidebar and focus lead
+  setProgress(1, `${workers.length} workers ready`)
+  setStatus('team', `${label} (${workers.length} workers)`, { icon: 'people', color: '#22c55e' })
+  notify(`◫ ${label}`, `Team ready — ${workers.length} workers in grid`)
   focusSurface(leadSurface)
 
   if (teamName) {
@@ -506,11 +522,17 @@ function runClose(c) {
     } catch {}
   }
 
-  // Restore lead pane's original title (remove appended team label)
-  if (cruPanes?.backend === 'cmux' && cruPanes.leadOriginalTitle != null) {
+  // Restore lead pane's original title and clear sidebar
+  if (cruPanes?.backend === 'cmux') {
     try {
-      const { renameSurface } = require('../lib/cmux')
-      renameSurface(cruPanes.leadPane, cruPanes.leadOriginalTitle)
+      const { renameSurface, clearStatus, clearProgress, clearLog, notify, log: cmuxLog } = require('../lib/cmux')
+      if (cruPanes.leadOriginalTitle != null) {
+        renameSurface(cruPanes.leadPane, cruPanes.leadOriginalTitle)
+      }
+      cmuxLog(`Team closed — ${closed.length} panes removed`, 'info')
+      notify(`◫ ${teamName}`, `Team shut down — ${closed.length} workers closed`)
+      clearStatus('team')
+      clearProgress()
     } catch {}
   }
 

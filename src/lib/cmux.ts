@@ -180,6 +180,64 @@ export function readScreen(surfaceId: string, lines?: number): string {
 }
 
 // ---------------------------------------------------------------------------
+// Notifications & Sidebar
+// ---------------------------------------------------------------------------
+
+/** Send a desktop notification. */
+export function notify(title: string, body?: string, workspace?: string): void {
+  const args = ['notify', '--title', title]
+  if (body) args.push('--body', body)
+  if (workspace) args.push('--workspace', workspace)
+  try { cmux(...args) } catch {}
+}
+
+/** Set a status key in the sidebar. */
+export function setStatus(key: string, value: string, opts?: { icon?: string; color?: string; workspace?: string }): void {
+  const args = ['set-status', key, value]
+  if (opts?.icon) args.push('--icon', opts.icon)
+  if (opts?.color) args.push('--color', opts.color)
+  if (opts?.workspace) args.push('--workspace', opts.workspace)
+  try { cmux(...args) } catch {}
+}
+
+/** Clear a status key from the sidebar. */
+export function clearStatus(key: string, workspace?: string): void {
+  const args = ['clear-status', key]
+  if (workspace) args.push('--workspace', workspace)
+  try { cmux(...args) } catch {}
+}
+
+/** Set a progress bar in the sidebar (0.0 – 1.0). */
+export function setProgress(value: number, label?: string, workspace?: string): void {
+  const args = ['set-progress', String(Math.min(1, Math.max(0, value)))]
+  if (label) args.push('--label', label)
+  if (workspace) args.push('--workspace', workspace)
+  try { cmux(...args) } catch {}
+}
+
+/** Clear the sidebar progress bar. */
+export function clearProgress(workspace?: string): void {
+  const args = ['clear-progress']
+  if (workspace) args.push('--workspace', workspace)
+  try { cmux(...args) } catch {}
+}
+
+/** Append a log entry to the sidebar. */
+export function log(message: string, level: 'info' | 'progress' | 'success' | 'warning' | 'error' = 'info', workspace?: string): void {
+  const args = ['log', '--level', level, '--source', 'cru']
+  if (workspace) args.push('--workspace', workspace)
+  args.push('--', message)
+  try { cmux(...args) } catch {}
+}
+
+/** Clear all sidebar log entries. */
+export function clearLog(workspace?: string): void {
+  const args = ['clear-log']
+  if (workspace) args.push('--workspace', workspace)
+  try { cmux(...args) } catch {}
+}
+
+// ---------------------------------------------------------------------------
 // Focus
 // ---------------------------------------------------------------------------
 
