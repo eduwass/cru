@@ -93,6 +93,13 @@ export async function createTestEnv(testName = 'test'): Promise<TestEnv> {
 
   await checkPrereqs()
 
+  // Clean up stale test sessions from previous runs
+  const stale = (await $`tmux list-sessions -F '#{session_name}'`.nothrow().text())
+    .trim().split('\n').filter((s) => s.startsWith('cru-e2e-'))
+  for (const s of stale) {
+    await $`tmux kill-session -t ${s}`.nothrow().quiet()
+  }
+
   const cwd = process.cwd()
   const tmuxSession = `cru-e2e-${Date.now()}`
   const runDir = createRunDir(testName)
