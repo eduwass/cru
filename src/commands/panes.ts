@@ -158,22 +158,32 @@ function applyConfigOverrides(conf: ReturnType<typeof loadConfig>, options: any)
   if (options['max-rows'] != null) conf.layout.grid.maxRows = options['max-rows']
 }
 
+/**
+ * cmux grid: mirror headless tmux workers into cmux splits.
+ *
+ * Same approach as Ghostty: workers spawn in `tmux -L claude-swarm-*`
+ * sessions. We find the swarm, break each pane into its own tmux window,
+ * create cmux splits, and attach each to a view session.
+ */
 function runGridCmux(c) {
   const {
+    findBestSwarm,
+    getWorkerPanes,
+    mirrorWorkerToCmux,
+    setRemainOnExit,
+  } = require('../lib/mirror')
+  const {
     currentSurface,
-    listSurfaces,
-    buildGrid,
     focusSurface,
     closeSurface,
     renameSurface,
     getSurfaceTitle,
   } = require('../lib/cmux') as typeof import('../lib/cmux')
 
-  const conf = loadConfig()
-  applyConfigOverrides(conf, c.options)
-
   const teamName = c.args.team
+  const expectedWorkers = c.options.expect
   const leadSurface = currentSurface()
+  const deadline = Date.now() + 60_000
 
   // Close previously-tracked workers (never arbitrary surfaces)
   if (teamName) {
@@ -184,30 +194,79 @@ function runGridCmux(c) {
     }
   }
 
-  // Determine worker surface IDs
-  let workerIds: string[]
-  if (c.options.expect) {
-    workerIds = buildGrid(leadSurface, c.options.expect, conf.layout)
-  } else {
-    const surfaces = listSurfaces()
-    workerIds = surfaces.filter((s) => s.id !== leadSurface).map((s) => s.id)
-    if (workerIds.length < 1) {
-      return c.error({ code: 'NO_WORKERS', message: 'Only one surface — nothing to arrange. Use --expect N to create workers.' })
+  // 1. Find the swarm socket
+  let swarm: { socket: string; session: string } | null = null
+  if (expectedWorkers) {
+    while (Date.now() < deadline) {
+      swarm = findBestSwarm(expectedWorkers)
+      if (swarm) break
+      Bun.sleepSync(200)
     }
+  } else {
+    swarm = findBestSwarm()
   }
 
-  // Label surfaces and build worker records
-  const label = teamName || 'cru'
-  const names = resolveWorkerNames(teamName, workerIds.length)
+  if (!swarm) {
+    return c.error({
+      code: 'NO_SWARM',
+      message: 'No claude-swarm tmux session found. Is a Claude Code team running?',
+    })
+  }
 
-  // Append to lead's existing title (don't overwrite user's name)
+  console.log(`  [grid] found swarm: ${swarm.socket}/${swarm.session}`)
+  setRemainOnExit(swarm.socket)
+
+  // 2. Incrementally mirror workers as they appear
+  const mirrored = new Map<string, { cmuxSurface: string; viewSession: string }>()
+
+  while (Date.now() < deadline) {
+    const allWorkers = getWorkerPanes(swarm.socket)
+    const newWorkers = allWorkers.filter((p: string) => !mirrored.has(p))
+
+    for (const paneId of newWorkers) {
+      const idx = mirrored.size
+      const splitDir: 'right' | 'down' = idx === 0 ? 'right' : 'down'
+      const splitTarget = idx === 0
+        ? leadSurface
+        : [...mirrored.values()].pop()!.cmuxSurface
+
+      const result = mirrorWorkerToCmux(
+        swarm.socket, swarm.session,
+        paneId, idx, splitTarget, splitDir,
+      )
+      mirrored.set(paneId, result)
+    }
+
+    if (expectedWorkers && mirrored.size >= expectedWorkers) break
+
+    if (!expectedWorkers && mirrored.size > 0 && newWorkers.length === 0) {
+      Bun.sleepSync(3000)
+      const finalWorkers = getWorkerPanes(swarm.socket)
+      if (finalWorkers.filter((p: string) => !mirrored.has(p)).length === 0) break
+      continue
+    }
+
+    Bun.sleepSync(200)
+  }
+
+  if (mirrored.size === 0) {
+    return c.error({ code: 'NO_WORKERS', message: 'No worker panes found in swarm.' })
+  }
+
+  // 3. Label surfaces
+  const label = teamName || 'cru'
   const leadOriginalTitle = getSurfaceTitle(leadSurface)
   try { renameSurface(leadSurface, `${leadOriginalTitle} (◫ lead @ ${label})`) } catch {}
 
-  const workers = workerIds.map((id, i) => {
-    try { renameSurface(id, `⚡ ${names[i]} @ ${label}`) } catch {}
-    return { name: names[i], paneId: id, color: WORKER_COLORS[i % WORKER_COLORS.length] }
+  const mirrors = [...mirrored.entries()]
+  const names = resolveWorkerNames(teamName, mirrors.length)
+  const workers = mirrors.map(([, m], i) => {
+    try { renameSurface(m.cmuxSurface, `⚡ ${names[i]} @ ${label}`) } catch {}
+    return { name: names[i], paneId: m.cmuxSurface, color: WORKER_COLORS[i % WORKER_COLORS.length] }
   })
+
+  // 4. Focus lead and save tracking
+  focusSurface(leadSurface)
 
   if (teamName) {
     savePanes(teamName, {
@@ -220,12 +279,11 @@ function runGridCmux(c) {
     })
   }
 
-  focusSurface(leadSurface)
   return {
     applied: true,
     backend: 'cmux',
-    lead: { position: conf.layout.lead.position, size: `${conf.layout.lead.size}%` },
-    workers: workers.length,
+    swarm: `${swarm.socket}/${swarm.session}`,
+    workers: mirrored.size,
   }
 }
 
