@@ -10,6 +10,15 @@ import { saveDebugSnapshot, saveLogs, captureTmuxPane, poll } from '../../helper
 
 const TIMEOUT = 180_000
 
+function cruEnv(env: TestEnv) {
+  return {
+    ...process.env,
+    TERM_PROGRAM: 'iTerm.app',
+    TMUX: `/tmp/tmux-${process.getuid?.() ?? 501}/default,0,0`,
+    TMUX_PANE: env.leadPaneId,
+  }
+}
+
 describe('/cru with explicit count', () => {
   let env: TestEnv
   let teamName: string | null = null
@@ -27,7 +36,7 @@ describe('/cru with explicit count', () => {
       // Kill worker panes via cru
       if (teamName) {
         await $`bun src/cli.ts panes close ${teamName}`
-          .env({ ...process.env, TERM_PROGRAM: 'iTerm.app' })
+          .env(cruEnv(env))
           .nothrow().quiet()
         console.log(`  [cleanup] closed team ${teamName}`)
       }

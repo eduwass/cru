@@ -20,6 +20,16 @@ import { saveDebugSnapshot, saveLogs, captureTmuxPane, poll } from '../../helper
 
 const TIMEOUT = 300_000
 
+/** Build env for subprocess cru calls that need tmux context. */
+function cruEnv(env: TestEnv) {
+  return {
+    ...process.env,
+    TERM_PROGRAM: 'iTerm.app',
+    TMUX: `/tmp/tmux-${process.getuid?.() ?? 501}/default,0,0`,
+    TMUX_PANE: env.leadPaneId,
+  }
+}
+
 describe('/cru full workflow', () => {
   let env: TestEnv
   let teamName: string | null = null
@@ -261,7 +271,7 @@ describe('/cru full workflow', () => {
 
       // Run grid with lead on right using team name for pane identification
       const result = await $`bun src/cli.ts panes grid ${teamName} --lead-position right`
-        .env({ ...process.env, TERM_PROGRAM: 'iTerm.app' })
+        .env(cruEnv(env))
         .nothrow()
         .text()
       console.log(`  grid result: ${result.replace(/\n/g, ' ').trim().slice(0, 200)}`)
@@ -302,7 +312,7 @@ describe('/cru full workflow', () => {
     '7. cru panes close removes all worker panes',
     async () => {
       await $`bun src/cli.ts panes close ${teamName}`
-        .env({ ...process.env, TERM_PROGRAM: 'iTerm.app' })
+        .env(cruEnv(env))
         .nothrow()
 
       // Wait for only lead pane to remain
