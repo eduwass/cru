@@ -20,9 +20,11 @@ import { readdirSync, statSync } from 'node:fs'
 import { join } from 'node:path'
 import { splitTerminal, sendCommand as ghosttySendCommand } from './ghostty'
 
-/** Run a tmux command on a specific socket (or default). */
-function tmuxSocket(args: string[], socket?: string): string {
-  const fullArgs = socket ? ['-L', socket, ...args] : args
+/** Run a tmux command on a specific socket. Socket is required to avoid
+ *  accidentally mutating the user's default tmux server. */
+function tmuxSocket(args: string[], socket: string): string {
+  if (!socket) throw new Error('[mirror] tmuxSocket called without a socket — refusing to touch the default tmux server')
+  const fullArgs = ['-L', socket, ...args]
   return execFileSync('tmux', fullArgs, { encoding: 'utf-8', timeout: 3000, stdio: ['pipe', 'pipe', 'pipe'] }).trim()
 }
 
