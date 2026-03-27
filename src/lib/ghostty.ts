@@ -9,16 +9,21 @@ export function ghostty(script: string): string {
 /**
  * Find the Ghostty terminal ID that THIS process is running in.
  *
- * Ghostty's AppleScript API doesn't expose PID or TTY per terminal,
- * so we correlate via creation order:
- * 1. Walk up the process tree to find our ancestor TTY
- * 2. Find all of Ghostty's direct children (login processes) + their TTYs
- * 3. Get all terminal IDs from AppleScript
- * 4. Both lists are in creation order — match by position
+ * Uses the focused terminal of the front window's selected tab. This is
+ * reliable for cru's use case: the command is always run from the terminal
+ * that should be the lead, so it's focused at call time.
  *
- * Falls back to the focused terminal if the lookup fails.
+ * Falls back to a TTY-based correlation if the focused lookup fails:
+ * match our TTY device number against each terminal's TTY via lsof.
  */
 export function currentTerminal(): string {
+  // Primary: the terminal we're running in should be focused right now
+  try {
+    const focused = ghostty('get id of focused terminal of selected tab of front window')
+    if (focused) return focused
+  } catch {}
+
+  // Fallback: correlate via TTY device
   try {
     // 1. Walk up from our PID to find the ancestor TTY
     let pid = process.pid
@@ -45,27 +50,26 @@ export function currentTerminal(): string {
       ?.trim().split(/\s+/)[0]
     if (!ghosttyPid) throw new Error('Ghostty process not found')
 
-    // 3. Find all Ghostty children (login processes) sorted by PID (= creation order)
+    // 3. Find Ghostty children with valid TTYs, sorted by TTY name for stable ordering
     const children = execFileSync(
       'ps', ['-ax', '-o', 'pid=,ppid=,tty='],
       { encoding: 'utf-8' },
     ).split('\n')
       .map((l) => l.trim().split(/\s+/))
-      .filter((p) => p[1] === ghosttyPid)
-      .sort((a, b) => parseInt(a[0]) - parseInt(b[0]))
+      .filter((p) => p[1] === ghosttyPid && p[2] && p[2] !== '??')
+      .sort((a, b) => a[2].localeCompare(b[2]))
 
     // 4. Find our position in the children list
     const ourIndex = children.findIndex((c) => c[2] === ourTty)
     if (ourIndex < 0) throw new Error(`TTY ${ourTty} not found in Ghostty children`)
 
-    // 5. Get terminal IDs from AppleScript (same creation order)
+    // 5. Get terminal IDs from AppleScript
     const terminalIds = listAllTerminals()
     if (ourIndex >= terminalIds.length) throw new Error('Terminal index out of range')
 
     return terminalIds[ourIndex]
   } catch {
-    // Fallback: use the focused terminal (original behavior)
-    return ghostty('get id of focused terminal of selected tab of front window')
+    throw new Error('Could not determine current Ghostty terminal')
   }
 }
 

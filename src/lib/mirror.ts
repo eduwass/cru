@@ -28,6 +28,56 @@ function tmuxSocket(args: string[], socket: string): string {
   return execFileSync('tmux', fullArgs, { encoding: 'utf-8', timeout: 3000, stdio: ['pipe', 'pipe', 'pipe'] }).trim()
 }
 
+/**
+ * Pre-start the tmux server for a swarm socket with an empty config.
+ *
+ * The Claude Code agent framework creates a tmux server on `claude-swarm-<PID>`
+ * and relies on window names (e.g. "swarm-view") for pane management. If the
+ * user's ~/.tmux.conf has hooks (like `after-new-session rename-window ...`),
+ * those hooks fire and rename windows, breaking the framework's lookups.
+ *
+ * By starting the server first with `-f /dev/null`, we ensure no user hooks
+ * are loaded. The framework's subsequent `new-session` reuses this server.
+ */
+export function preWarmSwarmServer(socket: string): void {
+  try {
+    // Check if server is already running
+    execFileSync('tmux', ['-L', socket, 'list-sessions'], {
+      encoding: 'utf-8', timeout: 2000, stdio: ['pipe', 'pipe', 'pipe'],
+    })
+    // Server already running — nothing to do
+  } catch {
+    // Server not running — create a dummy session with empty config to skip user hooks.
+    // A bare `start-server` exits immediately (no sessions), so we need a session
+    // to keep the server alive until the framework creates its own.
+    try {
+      execFileSync('tmux', ['-L', socket, '-f', '/dev/null', 'new-session', '-d', '-s', '_cru_prewarm'], {
+        encoding: 'utf-8', timeout: 2000, stdio: ['pipe', 'pipe', 'pipe'],
+      })
+    } catch {}
+  }
+}
+
+/**
+ * Find the lead Claude Code process PID by walking up the process tree.
+ * The swarm socket name is `claude-swarm-<lead-PID>`.
+ */
+export function findLeadPid(): number | null {
+  let pid = process.ppid
+  for (let i = 0; i < 10; i++) {
+    try {
+      const info = execFileSync('ps', ['-o', 'ppid=,comm=', '-p', String(pid)], {
+        encoding: 'utf-8', timeout: 1000,
+      }).trim()
+      const comm = info.split(/\s+/).slice(1).join(' ')
+      if (comm.includes('claude')) return pid
+      pid = parseInt(info.split(/\s+/)[0])
+      if (!pid || pid <= 1) break
+    } catch { break }
+  }
+  return null
+}
+
 /** Find claude-swarm tmux socket names, newest first. */
 export function findSwarmSockets(): string[] {
   const uid = process.getuid?.() ?? 501
@@ -64,7 +114,7 @@ export function findLiveSwarms(): Array<{ socket: string; session: string; paneC
     try {
       const sessions = tmuxSocket(['list-sessions', '-F', '#{session_name}'], socket)
         .split('\n').filter(Boolean)
-        .filter(s => !s.startsWith('view-'))
+        .filter(s => !s.startsWith('view-') && !/^v\d+$/.test(s) && s !== '_cru_prewarm')
       if (sessions.length === 0) continue
       const session = sessions[0]
 
@@ -97,9 +147,14 @@ export function findBestSwarm(expectedWorkers?: number): { socket: string; sessi
 /** Get worker pane IDs from a swarm socket. All panes are workers (lead runs in user's terminal). */
 export function getWorkerPanes(socket: string, _session?: string): string[] {
   try {
-    const allPanes = tmuxSocket(['list-panes', '-a', '-F', '#{pane_id}'], socket)
+    // List panes with their session name so we can exclude non-worker sessions
+    const lines = tmuxSocket(['list-panes', '-a', '-F', '#{session_name} #{pane_id}'], socket)
       .split('\n').filter(Boolean)
-    return [...new Set(allPanes)].sort()
+    const workerPanes = lines
+      .map(l => { const [sess, ...rest] = l.split(' '); return { session: sess, paneId: rest.join(' ') } })
+      .filter(p => p.session !== '_cru_prewarm' && !p.session.startsWith('view-') && !/^v\d+$/.test(p.session))
+      .map(p => p.paneId)
+    return [...new Set(workerPanes)].sort()
   } catch {
     return []
   }
@@ -121,22 +176,27 @@ export function mirrorSingleWorker(
   index: number,
   splitTarget: string,
   splitDirection: 'right' | 'down',
-): { ghosttyTerminal: string; viewSession: string } {
-  const windowName = `worker-${index + 1}`
-  const viewName = `view-${index + 1}`
+): { ghosttyTerminal: string; viewSession: string } | null {
+  // Use pane ID in names to guarantee uniqueness — avoids collisions when
+  // a break-pane succeeds but later steps fail and we retry with a different pane.
+  const paneSlug = paneId.replace('%', '')
+  const windowName = `w${paneSlug}`
+  const viewName = `v${paneSlug}`
 
-  // Break pane into its own tmux window
   try {
+    // Break pane into its own tmux window
     tmuxSocket(['break-pane', '-s', paneId, '-d', '-n', windowName], socket)
-  } catch (e: any) {
-    console.error(`  [mirror] break-pane ${paneId}: ${e.message}`)
-  }
 
-  // Create a session group member pointing at the worker's window
-  try { tmuxSocket(['kill-session', '-t', viewName], socket) } catch {}
-  tmuxSocket(['new-session', '-d', '-t', session, '-s', viewName], socket)
-  tmuxSocket(['set-option', '-t', viewName, 'status', 'off'], socket)
-  tmuxSocket(['select-window', '-t', `${viewName}:${windowName}`], socket)
+    // Create a session group member pointing at the worker's window
+    try { tmuxSocket(['kill-session', '-t', viewName], socket) } catch {}
+    tmuxSocket(['new-session', '-d', '-t', session, '-s', viewName], socket)
+    tmuxSocket(['set-option', '-t', viewName, 'status', 'off'], socket)
+    tmuxSocket(['select-window', '-t', `${viewName}:${windowName}`], socket)
+  } catch (e: any) {
+    console.error(`  [mirror] skipping worker-${index + 1} — tmux setup failed for pane ${paneId}: ${e.message}`)
+    try { tmuxSocket(['kill-session', '-t', viewName], socket) } catch {}
+    return null
+  }
 
   // Create Ghostty split
   const newTermId = splitTerminal(splitTarget, splitDirection)
@@ -146,7 +206,7 @@ export function mirrorSingleWorker(
   ghosttySendCommand(newTermId, `tmux -L ${socket} attach -t ${viewName}`)
   Bun.sleepSync(200)
 
-  console.log(`  [mirror] ${windowName} (${paneId}) → ghostty:${newTermId}`)
+  console.log(`  [mirror] worker-${index + 1} (${paneId}) → ghostty:${newTermId}`)
   return { ghosttyTerminal: newTermId, viewSession: viewName }
 }
 
@@ -161,24 +221,27 @@ export function mirrorWorkerToCmux(
   index: number,
   splitTarget: string,
   splitDirection: 'right' | 'down',
-): { cmuxSurface: string; viewSession: string } {
+): { cmuxSurface: string; viewSession: string } | null {
   const { splitSurface, sendCommand: cmuxSendCommand } = require('./cmux')
 
-  const windowName = `worker-${index + 1}`
-  const viewName = `view-${index + 1}`
+  const paneSlug = paneId.replace('%', '')
+  const windowName = `w${paneSlug}`
+  const viewName = `v${paneSlug}`
 
-  // Break pane into its own tmux window
   try {
+    // Break pane into its own tmux window
     tmuxSocket(['break-pane', '-s', paneId, '-d', '-n', windowName], socket)
-  } catch (e: any) {
-    console.error(`  [mirror] break-pane ${paneId}: ${e.message}`)
-  }
 
-  // Create a session group member pointing at the worker's window
-  try { tmuxSocket(['kill-session', '-t', viewName], socket) } catch {}
-  tmuxSocket(['new-session', '-d', '-t', session, '-s', viewName], socket)
-  tmuxSocket(['set-option', '-t', viewName, 'status', 'off'], socket)
-  tmuxSocket(['select-window', '-t', `${viewName}:${windowName}`], socket)
+    // Create a session group member pointing at the worker's window
+    try { tmuxSocket(['kill-session', '-t', viewName], socket) } catch {}
+    tmuxSocket(['new-session', '-d', '-t', session, '-s', viewName], socket)
+    tmuxSocket(['set-option', '-t', viewName, 'status', 'off'], socket)
+    tmuxSocket(['select-window', '-t', `${viewName}:${windowName}`], socket)
+  } catch (e: any) {
+    console.error(`  [mirror] skipping worker-${index + 1} — tmux setup failed for pane ${paneId}: ${e.message}`)
+    try { tmuxSocket(['kill-session', '-t', viewName], socket) } catch {}
+    return null
+  }
 
   // Create cmux split relative to the target surface
   const newSurface = splitSurface(splitDirection, splitTarget)
@@ -188,6 +251,6 @@ export function mirrorWorkerToCmux(
   cmuxSendCommand(newSurface, `tmux -L ${socket} attach -t ${viewName}`)
   Bun.sleepSync(200)
 
-  console.log(`  [mirror] ${windowName} (${paneId}) → cmux:${newSurface}`)
+  console.log(`  [mirror] worker-${index + 1} (${paneId}) → cmux:${newSurface}`)
   return { cmuxSurface: newSurface, viewSession: viewName }
 }

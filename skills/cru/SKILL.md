@@ -20,26 +20,36 @@ Parse `$ARGUMENTS` as a single string:
 
 2. **Create the team** using TeamCreate.
 
-3. **Spawn workers** using the Agent tool. For each worker (worker-1 through worker-N):
+3. **Pre-warm the swarm tmux server** (required — run BEFORE spawning agents):
+   ```bash
+   cru panes pre-warm
+   ```
+   This starts the tmux server that the agent framework will use, with an empty config
+   to prevent user tmux hooks from interfering with the framework's window management.
+   **This MUST complete before any Agent calls are made.**
+
+4. **Spawn workers** using the Agent tool. For each worker (worker-1 through worker-N):
    - Set `team_name` to the team name from step 2
    - Set `name` to "worker-1", "worker-2", etc.
    - Set `subagent_type` to "general-purpose"
-   - Set `run_in_background` to true
+   - Do NOT set `run_in_background` — agents must run as foreground team members to get tmux panes
    - Give each worker its specific task slice in the `prompt`, plus:
      - Context about what other workers are doing
      - An instruction to message teammates to share findings and discuss
 
    **IMPORTANT:** Spawn all workers AND apply the grid layout in a **single message** — include all Agent calls AND the Bash call for `cru panes grid` together. This ensures the grid command starts polling immediately while workers are still launching.
 
-4. **Apply grid layout** (in the same message as step 3):
+5. **Apply grid layout** (in the same message as step 4):
    ```bash
    cru panes grid <team-name> --expect <worker-count>
    ```
-   This polls for worker panes (up to 30s) and arranges them in a grid. In Ghostty, it automatically mirrors tmux panes into native splits.
+   This polls for worker panes (up to 30s) and arranges them in a grid.
 
-   If the grid command fails (e.g., not in a tmux session), that's OK — workers still run as background agents with the team bar visible. Tell the user they can start a tmux session for the grid layout.
+   **IMPORTANT:** ALWAYS run this command — do NOT skip it based on environment checks. The command detects the terminal backend internally (tmux, Ghostty, cmux) and handles each automatically. Ghostty works natively via AppleScript without tmux. Never assume tmux is required.
 
-5. **Report** the team is ready. Tell the user:
+   If the command exits with a non-zero status, that's OK — workers still run as background agents. Tell the user to check `cru doctor` for environment issues.
+
+6. **Report** the team is ready. Tell the user:
    - What each worker is focused on
    - `cru panes close <team-name>` to shut down when done
 

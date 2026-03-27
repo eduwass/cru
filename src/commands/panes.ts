@@ -24,6 +24,8 @@ function runGridGhostty(c) {
     getWorkerPanes,
     mirrorSingleWorker,
     setRemainOnExit,
+    preWarmSwarmServer,
+    findLeadPid,
   } = require('../lib/mirror')
   const {
     currentTerminal,
@@ -33,6 +35,13 @@ function runGridGhostty(c) {
   const teamName = c.args.team
   const expectedWorkers = c.options.expect
   const deadline = Date.now() + 60_000
+
+  // Pre-start the swarm tmux server with empty config to avoid user hooks
+  // (e.g. after-new-session rename-window) that break the framework's window lookups.
+  const leadPid = findLeadPid()
+  if (leadPid) {
+    preWarmSwarmServer(`claude-swarm-${leadPid}`)
+  }
 
   // 1. Find the swarm socket
   // Only poll if --expect was passed (the skill sets this when workers are spawning).
@@ -60,40 +69,47 @@ function runGridGhostty(c) {
   // Keep dead panes visible after worker exits
   setRemainOnExit(swarm.socket)
 
-  // 2. Incrementally mirror workers as they appear
+  // 2. Wait for all workers, then mirror in one batch.
+  // IMPORTANT: we must NOT break-pane until the agent framework is done creating
+  // all panes. The framework uses a "swarm-view" window to manage panes, and
+  // break-pane destroys that window when the last pane is moved out. If we mirror
+  // incrementally, we race with the framework's pane creation and cause
+  // "Could not determine pane count for swarm window" errors.
   const leadTerminalId = currentTerminal()
   const mirrored = new Map<string, { ghosttyTerminal: string; viewSession: string }>()
 
+  // Phase 1: wait for all expected workers to appear (no mirroring yet)
+  let workerPanes: string[] = []
   while (Date.now() < deadline) {
-    const allWorkers = getWorkerPanes(swarm.socket)
-    const newWorkers = allWorkers.filter(p => !mirrored.has(p))
+    workerPanes = getWorkerPanes(swarm.socket)
 
-    for (const paneId of newWorkers) {
-      const idx = mirrored.size
-      const splitDir: 'right' | 'down' = idx === 0 ? 'right' : 'down'
-      const splitTarget = idx === 0
-        ? leadTerminalId
-        : [...mirrored.values()].pop()!.ghosttyTerminal
+    if (expectedWorkers && workerPanes.length >= expectedWorkers) break
 
-      const result = mirrorSingleWorker(
-        swarm.socket, swarm.session,
-        paneId, idx, splitTarget, splitDir,
-      )
-      mirrored.set(paneId, result)
-    }
-
-    // All expected workers mirrored
-    if (expectedWorkers && mirrored.size >= expectedWorkers) break
-
-    // No expected count — wait for workers to stop appearing
-    if (!expectedWorkers && mirrored.size > 0 && newWorkers.length === 0) {
+    if (!expectedWorkers && workerPanes.length > 0) {
+      const snapshot = workerPanes.length
       Bun.sleepSync(3000) // give stragglers 3s
-      const finalWorkers = getWorkerPanes(swarm.socket)
-      if (finalWorkers.filter(p => !mirrored.has(p)).length === 0) break
+      const after = getWorkerPanes(swarm.socket)
+      if (after.length === snapshot) { workerPanes = after; break }
       continue
     }
 
     Bun.sleepSync(200)
+  }
+
+  // Phase 2: mirror all workers at once (safe — framework is done creating panes)
+  for (const paneId of workerPanes) {
+    const idx = mirrored.size
+    const splitDir: 'right' | 'down' = idx === 0 ? 'right' : 'down'
+    const splitTarget = idx === 0
+      ? leadTerminalId
+      : [...mirrored.values()].pop()!.ghosttyTerminal
+
+    const result = mirrorSingleWorker(
+      swarm.socket, swarm.session,
+      paneId, idx, splitTarget, splitDir,
+    )
+    if (!result) continue
+    mirrored.set(paneId, result)
   }
 
   if (mirrored.size === 0) {
@@ -174,6 +190,8 @@ function runGridCmux(c) {
     getWorkerPanes,
     mirrorWorkerToCmux,
     setRemainOnExit,
+    preWarmSwarmServer,
+    findLeadPid,
   } = require('../lib/mirror')
   const {
     currentSurface,
@@ -197,6 +215,12 @@ function runGridCmux(c) {
   const expectedWorkers = c.options.expect
   const leadSurface = currentSurface()
   const deadline = Date.now() + 60_000
+
+  // Pre-start swarm tmux server with empty config (same as Ghostty path)
+  const leadPid = findLeadPid()
+  if (leadPid) {
+    preWarmSwarmServer(`claude-swarm-${leadPid}`)
+  }
 
   // Close previously-tracked workers (never arbitrary surfaces)
   if (teamName) {
@@ -234,7 +258,7 @@ function runGridCmux(c) {
   setPhase('spawning', label)
   sidebarLog('Swarm found, mirroring workers...', 'progress')
 
-  // 2. Incrementally mirror workers into a grid layout
+  // 2. Wait for all workers, then mirror in one batch (same rationale as Ghostty path)
   const conf = loadConfig()
   applyConfigOverrides(conf, c.options)
   const totalExpected = expectedWorkers || 1
@@ -244,50 +268,53 @@ function runGridCmux(c) {
 
   setProgress(0, `0/${totalExpected} workers`)
 
+  // Phase 1: wait for all expected workers (no mirroring yet)
+  let workerPanes: string[] = []
   while (Date.now() < deadline) {
-    const allWorkers = getWorkerPanes(swarm.socket)
-    const newWorkers = allWorkers.filter((p: string) => !mirrored.has(p))
+    workerPanes = getWorkerPanes(swarm.socket)
 
-    for (const paneId of newWorkers) {
-      const idx = mirrored.size
-      const row = Math.floor(idx / cols)
-      const col = idx % cols
+    if (expectedWorkers && workerPanes.length >= expectedWorkers) break
 
-      let splitDir: 'right' | 'down'
-      let splitTarget: string
-      if (idx === 0) {
-        splitDir = 'right'
-        splitTarget = leadSurface
-      } else if (row === 0) {
-        splitDir = 'right'
-        splitTarget = mirroredSurfaces[idx - 1]
-      } else {
-        splitDir = 'down'
-        splitTarget = mirroredSurfaces[(row - 1) * cols + col]
-      }
-
-      const result = mirrorWorkerToCmux(
-        swarm.socket, swarm.session,
-        paneId, idx, splitTarget, splitDir,
-      )
-      mirrored.set(paneId, result)
-      mirroredSurfaces.push(result.cmuxSurface)
-
-      // Update sidebar progress
-      sidebarLog(`worker-${idx + 1} mirrored`, 'success')
-      setProgress(mirrored.size / totalExpected, `${mirrored.size}/${totalExpected} workers`)
-    }
-
-    if (expectedWorkers && mirrored.size >= expectedWorkers) break
-
-    if (!expectedWorkers && mirrored.size > 0 && newWorkers.length === 0) {
+    if (!expectedWorkers && workerPanes.length > 0) {
+      const snapshot = workerPanes.length
       Bun.sleepSync(3000)
-      const finalWorkers = getWorkerPanes(swarm.socket)
-      if (finalWorkers.filter((p: string) => !mirrored.has(p)).length === 0) break
+      const after = getWorkerPanes(swarm.socket)
+      if (after.length === snapshot) { workerPanes = after; break }
       continue
     }
 
     Bun.sleepSync(200)
+  }
+
+  // Phase 2: mirror all workers at once (safe — framework is done creating panes)
+  for (const paneId of workerPanes) {
+    const idx = mirrored.size
+    const row = Math.floor(idx / cols)
+    const col = idx % cols
+
+    let splitDir: 'right' | 'down'
+    let splitTarget: string
+    if (idx === 0) {
+      splitDir = 'right'
+      splitTarget = leadSurface
+    } else if (row === 0) {
+      splitDir = 'right'
+      splitTarget = mirroredSurfaces[idx - 1]
+    } else {
+      splitDir = 'down'
+      splitTarget = mirroredSurfaces[(row - 1) * cols + col]
+    }
+
+    const result = mirrorWorkerToCmux(
+      swarm.socket, swarm.session,
+      paneId, idx, splitTarget, splitDir,
+    )
+    if (!result) continue
+    mirrored.set(paneId, result)
+    mirroredSurfaces.push(result.cmuxSurface)
+
+    sidebarLog(`worker-${idx + 1} mirrored`, 'success')
+    setProgress(mirrored.size / totalExpected, `${mirrored.size}/${totalExpected} workers`)
   }
 
   if (mirrored.size === 0) {
@@ -459,23 +486,15 @@ function runClose(c) {
       closed.push({ name: w.name, pane: w.paneId })
     }
 
-    // If mirrored, also clean up tmux view sessions on the custom socket
+    // If mirrored, kill the entire tmux server on the swarm socket.
+    // Leaving it alive causes stale sessions/windows that break the next team spawn
+    // (the agent framework reuses the socket by PID and gets confused by leftover state).
     if (cruPanes.backend === 'ghostty') {
       try {
         const { findSwarmSockets } = require('../lib/mirror')
         const { execFileSync } = require('node:child_process')
         for (const socket of findSwarmSockets()) {
-          try {
-            const sessions = execFileSync(
-              'tmux', ['-L', socket, 'list-sessions', '-F', '#{session_name}'],
-              { encoding: 'utf-8', timeout: 3000 },
-            ).trim().split('\n')
-            for (const name of sessions) {
-              if (name.startsWith('view-')) {
-                try { execFileSync('tmux', ['-L', socket, 'kill-session', '-t', name], { timeout: 3000 }) } catch {}
-              }
-            }
-          } catch {}
+          try { execFileSync('tmux', ['-L', socket, 'kill-server'], { timeout: 3000 }) } catch {}
         }
       } catch {}
     }
@@ -611,10 +630,21 @@ function runList(c) {
   return { window: windowId, panes: info }
 }
 
+function runPreWarm(_c) {
+  const { preWarmSwarmServer, findLeadPid } = require('../lib/mirror')
+  const leadPid = findLeadPid()
+  if (!leadPid) {
+    return { warmed: false, reason: 'Could not find lead Claude Code process' }
+  }
+  const socket = `claude-swarm-${leadPid}`
+  preWarmSwarmServer(socket)
+  return { warmed: true, socket }
+}
+
 export const panes = {
-  description: 'Manage terminal panes (list, grid layout, close)',
+  description: 'Manage terminal panes (list, grid layout, close, pre-warm)',
   args: z.object({
-    action: z.enum(['list', 'grid', 'close']).default('list').describe('Action: list, grid, or close'),
+    action: z.enum(['list', 'grid', 'close', 'pre-warm']).default('list').describe('Action: list, grid, close, or pre-warm'),
     team: z.string().optional().describe('Team name (omit to auto-detect)'),
   }),
   options: z.object({
@@ -630,6 +660,7 @@ export const panes = {
       case 'grid': return runGrid(c)
       case 'close': return runClose(c)
       case 'list': return runList(c)
+      case 'pre-warm': return runPreWarm(c)
     }
   },
 }
